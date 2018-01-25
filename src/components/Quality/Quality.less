@@ -1,0 +1,58 @@
+@import "~less/compass/_theme.less";
+
+.root {
+	background: white;
+	padding: 2.4rem;
+}
+
+.title {
+	margin-top: 0;
+}
+
+div[data-test-id="performanceplugin-content"]{
+	height: 100%;
+}
+
+.counter-collection{
+	color : orange;
+	font-weight: bold;
+}
+
+.percentage-collection{
+	color : lightblue;
+	font-weight : bold;
+}
+
+.plugin-description-text{
+	color : darkslategrey;
+}
+
+.bar {
+  fill: #aaa;
+  height: 21px;
+  -webkit-transition: fill .3s ease;
+  transition: fill .3s ease;
+  cursor: pointer;
+}
+.bar text {
+  fill: #555;
+}
+
+.chart:hover .bar,.chart:focus .bar {
+  fill: #aaa;
+}
+
+.bar:hover,.bar:focus {
+  fill: red !important;
+}
+.bar:hover text,
+.bar:focus text {
+  fill: red;
+}
+
+figcaption {
+  font-weight: bold;
+  color: #000;
+  margin-bottom: 20px;
+}
+
