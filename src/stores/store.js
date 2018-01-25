@@ -135,7 +135,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 			for(var i =0 ; i<dataReturnedFind.length ; i++){
 	 				this.keysByShow = Object.keys(dataReturnedFind[i]);
 	 				for(var j=0;j<this.keysByShow.length;j++){
-	 					if(this.keysByShow[j] ==  el && this.getCurrentType(dataReturnedFind[i][el.toString()]) == type){
+	 					if(this.keysByShow[j] ==  el){// && this.getCurrentType(dataReturnedFind[i][el.toString()]) == type){
 	 						if(this.valueExistsInMetadata(dataReturnedFind[i][el.toString()],collectionToSet).found === false){
 	 							if(type == "array"){
 	 								var toInsert = "[" + dataReturnedFind[i][el].toString() + "]";
@@ -250,21 +250,21 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 			var isKeyPresent = false;
 	 			var positionAndFound = this.keyExistsInMetadata(keys[i],type, metaData);
 	 			if(positionAndFound.position >= 0 && positionAndFound.found){
-	 				if(metaData[positionAndFound.position]["type"] == this.getCurrentType(obj[x][keys[i]]))
+	 			//	if(metaData[positionAndFound.position]["type"] == this.getCurrentType(obj[x][keys[i]]))
 	 					isKeyPresent = true;
 					    
-					//	var tmpInt=types.indexOf(type);
-					//	if (tmpInt==-1){
-					//		types=metaData[positionAndFound.position]["type"];
-					//		metaData[positionAndFound.position]["type"]=types.sort();
-					//		types=[];
-					//	}
+						var tmpInt=types.indexOf(type);
+						if (tmpInt==-1){
+							types=metaData[positionAndFound.position]["type"];
+							metaData[positionAndFound.position]["type"]=types.sort();
+							types=[];
+						}
 	 			}
 	 			if(!isKeyPresent){
-				//	types.push(type);
-				//	types=[];
-	 			//	metaData.push({"key" : keys[i], "type" : types, "count" : 1 });
-					metaData.push({"key" : keys[i], "type" : type, "count" : 1 });
+					types.push(type);
+					types=[];
+	 				metaData.push({"key" : keys[i], "type" : types, "count" : 1 });
+				//	metaData.push({"key" : keys[i], "type" : type, "count" : 1 });
 				}else{
 	 				metaData[positionAndFound.position]["count"] ++;
 	 			}
@@ -317,7 +317,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	},
 	keyExistsInMetadata(key, type, metaData){
 		for(var i =0 ; i<metaData.length ; i++){
-			if(metaData[i]["key"] == key && metaData[i]["type"] == type)
+			if(metaData[i]["key"] == key)// && metaData[i]["type"] == type)
 				return{"position" : i, "found" : true}
 		}
 		return {"position": -1, "found" : false};
