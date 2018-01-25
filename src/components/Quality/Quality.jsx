@@ -36,21 +36,24 @@ class Quality extends Component {
         <div className="plugin-description-text"><b>The scope of this plugin is to measure data quality of your MongoDB data.<p/>
         Below will be shown a JSON object retrieved from this collection, which has every key for every documents. <p/>
         You can find JSON values for a key simply by clicking it.<p/>
-		For suggestion and comments please contact Andrea Maurino (maurino@disco.unimib.it)</b></div>
+		For suggestion and comments please contact Andrea Maurino (maurino@disco.unimib.it)</b><p/></div>
         <div className="row">
         <div className="col-md-2"><b>Key</b></div>
-        <div className="col-md-1"><b>Type</b></div>
         <div className="col-md-1"><b>Occurrences</b></div>
-        <div className="col-md-1"><b>Percentage</b></div>
+		<div className="col-md-1"><b>Completness</b></div>
+		<div className="col-md-1"><b>Type</b></div>
+		<div className="col-md-1"><b>MultipleTypes</b></div>
+
         </div>
           {
             this.props.collectionsValues.map((collection) => {
                 return (
                 <div className="row">
                     <div className="key-collection col-md-2"><b><a href="#" onClick={this.getValuesByKey}>{collection.key}</a></b></div>
-                    <div className="col-md-1 type-collection"><i>{collection.type}</i></div>
                     <div className="col-md-1"><span className="counter-collection">{collection.count}</span></div>
                     <div className="col-md-1"><span className="percentage-collection">{collection.percentage}%</span></div>
+					<div className="col-md-1"><span className="type-collection"><i>{collection.type.join(",")}</i></span></div>
+					<div className="col-md-1"><span className="multiple-collection">{collection.multiple}</span></div>
                 </div>
                  );
             })
@@ -63,7 +66,7 @@ class Quality extends Component {
           return(
   <g className="bar">
     <rect width={currentValue.count * 10} height="19" y={index == 0 ? 0 : (20 * index)}></rect>
-    <text x={currentValue.count * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em">{currentValue.key} has appeared {currentValue.count} times</text>
+    <text x={currentValue.count * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em">\"{currentValue.key}\" has appeared {currentValue.count} times of type {currentValue.type}</text>
   </g>
             );
           })

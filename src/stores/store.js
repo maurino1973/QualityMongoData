@@ -246,25 +246,26 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 	{
 	 		var keys = Object.keys(obj[x]);
 	 		for (var i = 0; i < keys.length; i++) {
+				types=[];
 	 			var type = this.getCurrentType(obj[x][keys[i]]);
 	 			var isKeyPresent = false;
 	 			var positionAndFound = this.keyExistsInMetadata(keys[i],type, metaData);
 	 			if(positionAndFound.position >= 0 && positionAndFound.found){
 	 			//	if(metaData[positionAndFound.position]["type"] == this.getCurrentType(obj[x][keys[i]]))
 	 					isKeyPresent = true;
-					    
-						var tmpInt=types.indexOf(type);
-						if (tmpInt==-1){
-							types=metaData[positionAndFound.position]["type"];
+						types=metaData[positionAndFound.position]["type"];
+					    var tmpInt=types.indexOf(type);
+						if (tmpInt<=-1){
+							types.push(type);
 							metaData[positionAndFound.position]["type"]=types.sort();
-							types=[];
+							metaData[positionAndFound.position]["multiple"]="Yes";
+							
 						}
 	 			}
 	 			if(!isKeyPresent){
 					types.push(type);
-					types=[];
-	 				metaData.push({"key" : keys[i], "type" : types, "count" : 1 });
-				//	metaData.push({"key" : keys[i], "type" : type, "count" : 1 });
+	 				metaData.push({"key" : keys[i], "type" : types, "count" : 1,"multiple":"No" });
+					
 				}else{
 	 				metaData[positionAndFound.position]["count"] ++;
 	 			}
