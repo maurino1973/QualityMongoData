@@ -43,6 +43,8 @@ class Quality extends Component {
 		<div className="col-md-1"><b>Completness</b></div>
 		<div className="col-md-1"><b>Type</b></div>
 		<div className="col-md-1"><b>MultipleTypes</b></div>
+		<div className="col-md-1"><b>Closed World Assuption</b></div>
+		<div className="col-md-1"><b>Candidate Primary key</b></div>
 
         </div>
           {
@@ -54,6 +56,9 @@ class Quality extends Component {
                     <div className="col-md-1"><span className="percentage-collection">{collection.percentage}%</span></div>
 					<div className="col-md-1"><span className="type-collection"><i>{collection.type.join(",")}</i></span></div>
 					<div className="col-md-1"><span className="multiple-collection">{collection.multiple}</span></div>
+					<div className="col-md-1"><span className="cwa-collection">{collection.cwa}</span></div>
+					
+					
                 </div>
                  );
             })
@@ -66,7 +71,7 @@ class Quality extends Component {
           return(
   <g className="bar">
     <rect width={currentValue.count * 10} height="19" y={index == 0 ? 0 : (20 * index)}></rect>
-    <text x={currentValue.count * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em">\"{currentValue.key}\" has appeared {currentValue.count} times of type {currentValue.type}</text>
+    <text x={currentValue.count * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em"> " {currentValue.key} " has appeared {currentValue.count} times of type {currentValue.type}</text>
   </g>
             );
           })
