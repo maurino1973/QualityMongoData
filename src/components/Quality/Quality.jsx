@@ -12,7 +12,6 @@ class TabBar extends Component {
     children: PropTypes.Array
   };
 
-
   constructor(props) {
     super(props);
 
@@ -31,9 +30,8 @@ class TabBar extends Component {
 
   renderTabBar(key) {
     const tab = this.props.children[key];
-
     return (
-      <li className={ this.state.activeTab === key ? styles.activetab : styles.tab}>
+      <li className={ this.state.activeTab == key ? styles.activetab : styles.tab}>
         <div onClick={ this.handleOnClick.bind(this, key) }>
           { tab.props.title }
         </div>
@@ -55,7 +53,7 @@ class TabBar extends Component {
           </div>
         </div>
       </div>
-    )
+    );
   }
 }
 
@@ -111,6 +109,14 @@ function metric1() {
   );
 }
 
+function metric2() {
+  return (
+    <div>
+      Metric 2
+    </div>
+  );
+}
+
 class Quality extends Component {
   static displayName = 'QualityComponent';
 
@@ -125,12 +131,33 @@ class Quality extends Component {
     console.log(window.app.appRegistry.components);
   }
 
+  componentWillMount() {
+    this.queryBar = window.app.appRegistry.getComponent('Query.QueryBar');
+  }
+
+  onApplyClicked() {
+    console.log("onApplyClicked");
+  }
+
+  onResetClicked() {
+    console.log("onResetClicked");
+  }
+
   render() {
     return (
-      <TabBar>
-        <Tab title="DashBoard" contentFactory={dashboard}/>
-        <Tab title="Metric1"   contentFactory={metric1}/>
-      </TabBar>
+      <div>
+        <this.queryBar
+          buttonLabel="Find"
+          onApply={this.onApplyClicked.bind(this)}
+          onReset={this.onResetClicked.bind(this)}
+        />
+
+        <TabBar>
+          <Tab title="DashBoard" contentFactory={dashboard}/>
+          <Tab title="Metric1"   contentFactory={metric1}/>
+          <Tab title="Metric2"   contentFactory={metric2}/>
+        </TabBar>
+      </div>
     );
   }
 }
