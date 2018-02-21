@@ -5,6 +5,137 @@ import ToggleButton from 'components/toggle-button';
 
 import styles from './Quality.less';
 
+class TabBar extends Component {
+  static displayName = 'TabBar';
+
+  static propTypes = {
+    children: PropTypes.Array
+  };
+
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      activeTab: 0
+    };
+  }
+
+  handleOnClick(key, event) {
+    event.preventDefault();
+
+    this.setState({
+      activeTab: key
+    });
+  }
+
+  renderTabBar(key) {
+    const tab = this.props.children[key];
+
+    return (
+      <li className={ this.state.activeTab === key ? styles.activetab : styles.tab}>
+        <div onClick={ this.handleOnClick.bind(this, key) }>
+          { tab.props.title }
+        </div>
+      </li>
+    );
+  }
+
+  render() {
+    let activeTab = this.props.children[this.state.activeTab];
+
+    return (
+      <div>
+        <ul className={styles.tabbar}>
+          { Object.keys(this.props.children).map(this.renderTabBar.bind(this)) }
+        </ul>
+        <div className={styles.tabcontentback}>
+          <div className={styles.tabcontent}>
+            { activeTab }
+          </div>
+        </div>
+      </div>
+    )
+  }
+}
+
+class Tab extends Component {
+  static displayName = 'Tab';
+
+  static propTypes = {
+    title:          PropTypes.string,
+    contentFactory: PropTypes.function
+  };
+
+  constructor(props) {
+    super(props);
+  }
+
+  render() {
+    return (
+      <div>
+        { this.props.contentFactory() }
+      </div>
+    );
+  }
+}
+
+function dashboard() {
+  return (
+    <div>
+      <div>
+        This is a <b>dashboard</b>.
+        It shows collection score and gives some settings.
+      </div>
+
+      <div className={classnames(styles.root)}>
+        <h2 className={classnames(styles.title)}>Quality Assement and Profile</h2>
+        <div className="plugin-description-text">
+          <b>The scope of this plugin is to measure data quality of your MongoDB data.
+          <p/> Below will be shown a JSON object retrieved from this collection, which has every key for every documents.
+          <p/> You can find JSON values for a key simply by clicking it.<p/>
+          For suggestion and comments please contact Andrea Maurino (maurino@disco.unimib.it)
+          </b>
+          <p/>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function metric1() {
+  return (
+    <div>
+      Metric 1
+    </div>
+  );
+}
+
+class Quality extends Component {
+  static displayName = 'QualityComponent';
+
+  static propTypes = {
+    status:   PropTypes.oneOf(['enabled', 'disabled']),
+    database: PropTypes.string
+  };
+
+  constructor(props) {
+    super(props);
+
+    console.log(window.app.appRegistry.components);
+  }
+
+  render() {
+    return (
+      <TabBar>
+        <Tab title="DashBoard" contentFactory={dashboard}/>
+        <Tab title="Metric1"   contentFactory={metric1}/>
+      </TabBar>
+    );
+  }
+}
+
+/*
 class Quality extends Component {
   static displayName = 'QualityComponent';
 
@@ -21,14 +152,7 @@ class Quality extends Component {
   getValuesByKeyImpl (event) {
    this.props.actions.showKeyValues(event.target.innerHTML,event.target.parentNode.parentNode.parentNode.getElementsByClassName("type-collection")[0].getElementsByTagName("i")[0].innerHTML,event.target.parentNode.parentNode.parentNode);
   }
- 
 
-
-  /**
-   * Render Quality component.
-   *
-   * @returns {React.Component} The rendered component.
-   */
   render() {
     return (
       <div className={classnames(styles.root)}>
@@ -57,16 +181,16 @@ class Quality extends Component {
 					<div className="col-md-1"><span className="type-collection"><i>{collection.type.join(",")}</i></span></div>
 					<div className="col-md-1"><span className="multiple-collection">{collection.multiple}</span></div>
 					<div className="col-md-1"><span className="cwa-collection">{collection.cwa}</span></div>
-					
-					
+
+
                 </div>
                  );
             })
           }
- <figure><figcaption>{this.props.collectionValuesByKey.length > 0 ? 'Below are listed all values for the key selected' : ''}</figcaption><svg className="chart" width="100%" height="10000" aria-labelledby="title" role="img">   
-   <title id="title">A bart chart showing information</title>      
+ <figure><figcaption>{this.props.collectionValuesByKey.length > 0 ? 'Below are listed all values for the key selected' : ''}</figcaption><svg className="chart" width="100%" height="10000" aria-labelledby="title" role="img">
+   <title id="title">A bart chart showing information</title>
         {
-        this.props.collectionValuesByKey.map((currentValue,index) => 
+        this.props.collectionValuesByKey.map((currentValue,index) =>
           {
           return(
   <g className="bar">
@@ -75,12 +199,13 @@ class Quality extends Component {
   </g>
             );
           })
-        } 
+        }
         </svg></figure>
       </div>
     );
   }
 }
+*/
 
 export default Quality;
 export { Quality };
