@@ -5,78 +5,7 @@ import ToggleButton from 'components/toggle-button';
 
 import styles from './Quality.less';
 
-class TabBar extends Component {
-  static displayName = 'TabBar';
-
-  static propTypes = {
-    children: PropTypes.Array
-  };
-
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      activeTab: 0
-    };
-  }
-
-  handleOnClick(key, event) {
-    event.preventDefault();
-
-    this.setState({
-      activeTab: key
-    });
-  }
-
-  renderTabBar(key) {
-    const tab = this.props.children[key];
-    return (
-      <li className={ this.state.activeTab == key ? styles.activetab : styles.tab}>
-        <div onClick={ this.handleOnClick.bind(this, key) }>
-          { tab.props.title }
-        </div>
-      </li>
-    );
-  }
-
-  render() {
-    let activeTab = this.props.children[this.state.activeTab];
-
-    return (
-      <div>
-        <ul className={styles.tabbar}>
-          { Object.keys(this.props.children).map(this.renderTabBar.bind(this)) }
-        </ul>
-        <div className={styles.tabcontentback}>
-          <div className={styles.tabcontent}>
-            { activeTab }
-          </div>
-        </div>
-      </div>
-    );
-  }
-}
-
-class Tab extends Component {
-  static displayName = 'Tab';
-
-  static propTypes = {
-    title:          PropTypes.string,
-    contentFactory: PropTypes.function
-  };
-
-  constructor(props) {
-    super(props);
-  }
-
-  render() {
-    return (
-      <div>
-        { this.props.contentFactory() }
-      </div>
-    );
-  }
-}
+import TabBar, { Tab } from 'components/TabView';
 
 function dashboard() {
   return (
@@ -84,18 +13,6 @@ function dashboard() {
       <div>
         This is a <b>dashboard</b>.
         It shows collection score and gives some settings.
-      </div>
-
-      <div className={classnames(styles.root)}>
-        <h2 className={classnames(styles.title)}>Quality Assement and Profile</h2>
-        <div className="plugin-description-text">
-          <b>The scope of this plugin is to measure data quality of your MongoDB data.
-          <p/> Below will be shown a JSON object retrieved from this collection, which has every key for every documents.
-          <p/> You can find JSON values for a key simply by clicking it.<p/>
-          For suggestion and comments please contact Andrea Maurino (maurino@disco.unimib.it)
-          </b>
-          <p/>
-        </div>
       </div>
     </div>
   )
@@ -127,8 +44,6 @@ class Quality extends Component {
 
   constructor(props) {
     super(props);
-
-    console.log(window.app.appRegistry.components);
   }
 
   componentWillMount() {
