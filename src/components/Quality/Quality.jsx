@@ -11,7 +11,7 @@ function scoreToColor(score) {
   console.assert(score >= 0 && score <= 100);
 
   const colors = ['orangered', 'orange', 'limegreen'];
-  var index = Math.floor(colors.length * score/101);
+  var index = Math.floor(colors.length * score/101);  //FIXME
 
   console.assert(index >= 0 && index < colors.length);
   return colors[index];
@@ -155,7 +155,7 @@ class DashBoard extends Tab {
         {
           elements
         }
-        <i><span>{types.join(",")}</span></i>
+        <i style={{display:"none"}}><span>{types.join(",")}</span></i>
       </span>
     );
     //TODO: Remove join: needed for interaction
@@ -218,11 +218,11 @@ class Quality extends Component {
             onReset={this.onResetClicked.bind(this)}
           />
 
-          <PluginTabBar>
+          <TabBar>
             <DashBoard title="Dashboard" store={ this.props }/>
             <Metric title="Metric1"/>
             <Metric title="Metric2"/>
-          </PluginTabBar>
+          </TabBar>
 
         </div>
     );
