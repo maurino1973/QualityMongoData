@@ -1,7 +1,7 @@
 import Reflux from 'reflux';
 import StateMixin from 'reflux-state-mixin';
 import QualityActions from 'actions';
-
+import toNS from 'mongodb-ns';
 
 const debug = require('debug')('mongodb-compass:stores:quality');
 
@@ -54,7 +54,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 		   // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
 		 //});
 		//
-		
+
 		//
 		// appRegistry.on('collection-changed', (namespace) => {
 		  //The collection has changed - provides the current namespace.
@@ -90,12 +90,15 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 		// Events emitted from the app registry:
 		appRegistry.on('collection-changed', this.onCollectionChanged.bind(this));
 		appRegistry.on('database-changed', this.onDatabaseChanged.bind(this));
+    appRegistry.on('query-changed', this.onQueryChanged.bind(this));
 		appRegistry.on('data-service-connected', (error, dataService) => {
 		//   // dataService is connected or errored.
 		//   // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
 		this.dataService = dataService;
 	});
 	},
+
+
 
 	/**
 	 * Initialize the Performance Plugin store state. The returned object must
@@ -110,10 +113,22 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 		collections : [],
 	 		databases : [],
 	 		collectionsValues : [],
-	 		collectionValuesByKey: []
+	 		collectionValuesByKey: [],
+	 		collectionScore: 0
 	 	};
 	 },
 
+   onQueryChanged(state) {
+     if (state.ns && toNS(state.ns).collection) {
+       this.filter = state.filter;
+       this.project = state.project;
+       this.sort = state.sort;
+       this.skip = state.skip;
+       this.limit = state.limit;
+       this.ns = state.ns;
+     }
+     console.log("onQueryChanged");
+   },
 	/**
 	 * handlers for each action defined in ../actions/index.jsx, for example:
 	 */
@@ -122,6 +137,10 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 		status: this.state.status === 'enabled' ? 'disabled' : 'enabled'
 	 	});
 	 },
+
+   profile() {
+     this.onCollectionChanged(this.namespace);
+   },
 
 	 showKeyValues(el,type,rowElement){
 	 	var barElements = document.getElementsByClassName('bar');
@@ -143,6 +162,8 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 							else {
 	 								var toInsert = dataReturnedFind[i][el];
 	 							}
+
+	 							//FIXME: toInsert can be null...
 	 							collectionToSet.push({"key" : toInsert.toString(), "count" : 1});
 	 						}
 	 						else{
@@ -179,7 +200,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 			for(var i=0;i<dataReturnedFind.length;i++){
 	 				this.keysByShowObject = Object.keys(dataReturnedFind[i]);
 	 				for(var j=0;j<this.keysByShowObject.length;j++){
-	 					
+
 	 					if(this.keysByShowObject[j] == el){
 	 						var keysByObjectTemp = Object.keys(dataReturnedFind[i][el]);
 	 						for(var z=0 ; z<keysByObjectTemp.length;z++){
@@ -199,9 +220,9 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 							}
 	 						}
 	 					}
-	 					
-	 					
-	 					
+
+
+
 	 				}
 	 			}
 	 			for(var i = 0; i<collectionToSet.length;i++){
@@ -242,44 +263,69 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 	var keys = [];
 	 	var metaData = [];
 		var types=[];
-	 	for(var x = 0; x<obj.length; x++)
-	 	{
-	 		var keys = Object.keys(obj[x]);
-	 		for (var i = 0; i < keys.length; i++) {
-				types=[];
+
+	 	for(var x = 0; x < obj.length; x++) {
+      var keys = Object.keys(obj[x]);
+
+      for (var i = 0; i < keys.length; i++) {
+        types=[];
 	 			var type = this.getCurrentType(obj[x][keys[i]]);
 	 			var isKeyPresent = false;
-	 			var positionAndFound = this.keyExistsInMetadata(keys[i],type, metaData);
-	 			if(positionAndFound.position >= 0 && positionAndFound.found){
-	 					isKeyPresent = true;
-						types=metaData[positionAndFound.position]["type"];
-					    var tmpInt=types.indexOf(type);
-						if (tmpInt<=-1){
-							types.push(type);
-							metaData[positionAndFound.position]["type"]=types.sort();
-							if (type=="null")
-								metaData[positionAndFound.position]["cwa"]="Yes";
-							else
-								metaData[positionAndFound.position]["multiple"]="Yes";								
-							
-						}
-	 			}
-	 			if(!isKeyPresent){
+	 			var positionAndFound = this.keyExistsInMetadata(keys[i], type, metaData);
+
+        if(positionAndFound.position >= 0 && positionAndFound.found) {
+          isKeyPresent = true;
+          types = metaData[positionAndFound.position]["type"];
+          var tmpInt = types.indexOf(type);
+
+          if (tmpInt <= -1){
+            types.push(type);
+
+            metaData[positionAndFound.position]["typeFreq"][type] = 0;
+            metaData[positionAndFound.position]["type"] = types.sort();
+            if (type == "null") {
+              metaData[positionAndFound.position]["cwa"]="Yes";
+            } else {
+              metaData[positionAndFound.position]["multiple"]="Yes";
+            }
+          }
+        }
+
+        if(!isKeyPresent){
 					types.push(type);
-	 				metaData.push({"key" : keys[i], "type" : types, "count" : 1,"multiple":"No" , "cwa":"No"});
-					
-				}else{
-	 				metaData[positionAndFound.position]["count"] ++;
+          var frq = {};
+          frq[type] = 1;
+
+	 				metaData.push({"key" : keys[i],
+                         "type" : types,
+                         "typeFreq": frq,
+                         "count" : 1,
+                         "multiple": "No",
+                         "cwa": "No",
+                         "score": 0});
+				} else {
+	 				metaData[positionAndFound.position]["count"]++;
+          metaData[positionAndFound.position]["typeFreq"][type] += 1;
 	 			}
 	 		}
 
 	 	}
-	 	for(var i = 0; i<metaData.length;i++){
+
+	 	var cScore = 0;
+	 	for(var i = 0; i < metaData.length;i++) {
 	 		var percentage = metaData[i].count / obj.length;
-	 		metaData[i].percentage = Math.round(percentage * 100*100)/100 ;
+	 		metaData[i].percentage = Math.round(percentage * 100*100)/100;
+
+      // TODO: Make a better row score algorithm
+      metaData[i].score = metaData[i].percentage;
+      cScore += metaData[i].score;
 	 	}
 
+	 	cScore /= metaData.length;
+
 	 	this.collectionValues = metaData;
+
+    this.setState({collectionScore: cScore});
 	 	return metaData;
 	 },
 	/*
@@ -287,24 +333,21 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	*/
 
 	onDatabaseChanged(namespace){
+    console.log("Database Changed");
 		this.setState(this.getInitialState());
 	},
 
 	onCollectionChanged(namespace) {
+    console.log("Collection Changed");
 		this.setState(this.getInitialState());
 		this.namespace = namespace;
 		this.dataService.find(namespace, {}, {}, (errors,dataReturnedFind) => {
-			
-
 			var metaData = this.calculateMetaData(dataReturnedFind);
 			this.setState({collectionsValues : metaData});
-
-
-
 		});
 	},
 
-	
+
 
 	//UTILS Javascript functions
 	keyExists(key, search) {
@@ -330,14 +373,14 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 		for(var i=0;i<metaData.length;i++){
 			if(metaData[i]["key"] == key){
 				return{"position" : i, "found" : true}
-			}	
+			}
 		}
 		return {"position" : -1 , "found" : false}
 	},
 	uniq(a){
 		return Array.from(new Set(a));
 	},
-	
+
 	getCurrentType (value){
 		if(value == null || value.length==0){
 			return "null";
@@ -354,7 +397,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 		else if(typeof value== "string"){
 			return "string"
 		}
-		
+
 		else if(typeof value == "object"){
 			return "object";
 		}
@@ -364,6 +407,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 * @param  {Object} prevState   previous state.
 	 */
 	 storeDidUpdate(prevState) {
+     console.log("Store Updated");
 	 	debug('Quality store changed from', prevState, 'to', this.state);
 	 }
 	});

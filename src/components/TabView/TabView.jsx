@@ -42,14 +42,12 @@ class TabBar extends Component {
     let activeTab = this.props.children[this.state.activeTab];
 
     return (
-      <div>
+      <div className={styles.tabcontentback}>
         <ul className={styles.tabbar}>
           { Object.keys(this.props.children).map(this.renderTabBar.bind(this)) }
         </ul>
-        <div className={styles.tabcontentback}>
-          <div className={styles.tabcontent}>
-            { activeTab }
-          </div>
+        <div className={styles.tabcontent}>
+          { activeTab }
         </div>
       </div>
     );
@@ -60,18 +58,21 @@ class Tab extends Component {
   static displayName = 'Tab';
 
   static propTypes = {
-    title:          PropTypes.string,
-    contentFactory: PropTypes.function
+    title: PropTypes.string
   };
 
   constructor(props) {
     super(props);
   }
 
+  renderContent() {
+    // Override me
+  }
+
   render() {
     return (
       <div>
-        { this.props.contentFactory() }
+        { this.renderContent() }
       </div>
     );
   }
