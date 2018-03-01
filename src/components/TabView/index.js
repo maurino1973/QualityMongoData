@@ -1,4 +1,4 @@
-import TabBar, { Tab } from './TabView';
+import TabBar, { MetricTab } from './TabView';
 
 export default TabBar;
-export { Tab };
+export { MetricTab };

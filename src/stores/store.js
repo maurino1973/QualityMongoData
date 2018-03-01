@@ -6,6 +6,29 @@ import toNS from 'mongodb-ns';
 const debug = require('debug')('mongodb-compass:stores:quality');
 
 
+class MetricEngine
+{
+  /**
+   * This method compute your metric using information from documents
+   * The method must return a number >= 0.0 and <= 1.0
+   */
+  compute(docs) {
+    // TODO: Override me
+  }
+}
+
+class TestMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+    this.score = Math.random();
+  }
+
+  compute(docs) {
+    return this.score;
+  }
+}
+
 /**
  * Performance Plugin store.
  */
@@ -87,6 +110,8 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	//},
 
 	onActivated(appRegistry) {
+    //TODO: Change the way the plugin update itself: it should fetch data only
+    //      when querying or sampling
 		// Events emitted from the app registry:
 		appRegistry.on('collection-changed', this.onCollectionChanged.bind(this));
 		appRegistry.on('database-changed', this.onDatabaseChanged.bind(this));
@@ -94,8 +119,8 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 		appRegistry.on('data-service-connected', (error, dataService) => {
 		//   // dataService is connected or errored.
 		//   // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
-		this.dataService = dataService;
-	});
+      this.dataService = dataService;
+    });
 	},
 
 
@@ -107,25 +132,32 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
-	 	return {
-	 		status: 'enabled',
-	 		database: '',
-	 		collections : [],
-	 		databases : [],
-	 		collectionsValues : [],
-	 		collectionValuesByKey: [],
-	 		collectionScore: 0
-	 	};
-	 },
+     return {
+       status: 'enabled',
+       database: '',
+       collections : [],
+       databases : [],
+       collectionsValues : [],
+       collectionValuesByKey: [],
+       collectionScore: 0,
+       metricEngine: {
+         "TestMetric1": new TestMetricEngine(),
+         "TestMetric2": new TestMetricEngine(),
+         "TestMetric3": new TestMetricEngine()
+       },
+       metrics: ["TestMetric1", "TestMetric2", "TestMetric3"]
+     };
+   },
 
    onQueryChanged(state) {
+     // TODO: Review this code
      if (state.ns && toNS(state.ns).collection) {
-       this.filter = state.filter;
+       this.filter  = state.filter;
        this.project = state.project;
-       this.sort = state.sort;
-       this.skip = state.skip;
-       this.limit = state.limit;
-       this.ns = state.ns;
+       this.sort    = state.sort;
+       this.skip    = state.skip;
+       this.limit   = state.limit;
+       this.ns      = state.ns;
      }
      console.log("onQueryChanged");
    },
@@ -140,6 +172,14 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
    profile() {
      this.onCollectionChanged(this.namespace);
+   },
+
+   computeMetric(name, props) {
+     console.assert(name in this.state.metricEngine);
+
+     // TODO: cache the documents
+     var metricScore = this.state.metricEngine[name](docs, props);
+     // TODO: save metric score
    },
 
 	 showKeyValues(el,type,rowElement){
@@ -163,8 +203,13 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 								var toInsert = dataReturnedFind[i][el];
 	 							}
 
+	 							var insert = "null";
 	 							//FIXME: toInsert can be null...
-	 							collectionToSet.push({"key" : toInsert.toString(), "count" : 1});
+	 							if (toInsert != null) {
+                  insert = toInsert.toString();
+                }
+
+                collectionToSet.push({"key": insert, "count" : 1});
 	 						}
 	 						else{
 	 							var position = this.valueExistsInMetadata(dataReturnedFind[i][el],collectionToSet).position;
@@ -258,6 +303,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
 	 	}
 	 },
+
  calculateMetaData(dataReturnedFind){
 	 	var obj = dataReturnedFind;
 	 	var keys = [];
@@ -281,7 +327,6 @@ const debug = require('debug')('mongodb-compass:stores:quality');
           if (tmpInt <= -1){
             types.push(type);
 
-            metaData[positionAndFound.position]["typeFreq"][type] = 0;
             metaData[positionAndFound.position]["type"] = types.sort();
             if (type == "null") {
               metaData[positionAndFound.position]["cwa"]="Yes";
@@ -293,19 +338,14 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
         if(!isKeyPresent){
 					types.push(type);
-          var frq = {};
-          frq[type] = 1;
 
 	 				metaData.push({"key" : keys[i],
                          "type" : types,
-                         "typeFreq": frq,
                          "count" : 1,
                          "multiple": "No",
-                         "cwa": "No",
-                         "score": 0});
+                         "cwa": "No"});
 				} else {
 	 				metaData[positionAndFound.position]["count"]++;
-          metaData[positionAndFound.position]["typeFreq"][type] += 1;
 	 			}
 	 		}
 
@@ -317,14 +357,14 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 	 		metaData[i].percentage = Math.round(percentage * 100*100)/100;
 
       // TODO: Make a better row score algorithm
-      metaData[i].score = metaData[i].percentage;
-      cScore += metaData[i].score;
+      cScore += metaData[i].percentage;
 	 	}
 
 	 	cScore /= metaData.length;
 
 	 	this.collectionValues = metaData;
 
+    //TODO: Use the results from the metrics
     this.setState({collectionScore: cScore});
 	 	return metaData;
 	 },
@@ -346,7 +386,6 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 			this.setState({collectionsValues : metaData});
 		});
 	},
-
 
 
 	//UTILS Javascript functions
