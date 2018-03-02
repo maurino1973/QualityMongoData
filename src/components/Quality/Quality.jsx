@@ -33,10 +33,7 @@ class Quality extends Component {
     return (
       <div className={classnames(styles.root)}>
         <h2 className={classnames(styles.title)}>Quality Assement and Profile</h2>
-        <div className="plugin-description-text"><b>The scope of this plugin is to measure data quality of your MongoDB data.<p/>
-        Below will be shown a JSON object retrieved from this collection, which has every key for every documents. <p/>
-        You can find JSON values for a key simply by clicking it.<p/>
-		For suggestion and comments please contact Andrea Maurino (maurino@disco.unimib.it)</b><p/></div>
+        <div className="plugin-description-text">  </div>
         <div className="row">
         <div className="col-md-2"><b>Key</b></div>
         <div className="col-md-1"><b>Occurrences</b></div>
