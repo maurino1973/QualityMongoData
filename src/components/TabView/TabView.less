@@ -1,0 +1,93 @@
+@import "~less/compass/_theme.less";
+
+.dashboardScore {
+  font-size: xx-large;
+  color: cornflowerblue;
+}
+
+.weightBlock {
+  display: inline;
+}
+
+.weightRange {
+  width: 25%;
+  margin-left: 1em;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.weightLabel {
+  margin-left: 1em;
+}
+
+input[type="range"] {
+  .weightRange
+}
+
+.tabbar {
+  padding-left: 1em;
+  margin-bottom: 0px;
+  position: relative;
+  background: #f5f6f7;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+}
+
+.tab, .activetab {
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: bold;
+  margin-right: 2em;
+  color: #aaaaaa;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #474646;
+}
+
+.activetab {
+  color: #474646;
+}
+
+.tabcontentback {
+  position: relative;
+  background: #f5f6f7;
+  width: 100%;
+  height: 100%; //FIXME: Temporary
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tabcontent {
+  margin-left: 1em;
+  margin-right: 1em;
+  margin-bottom: 1em;
+  background: white;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+  padding-left: 0.5em;
+}
+
+.tabheader {
+  margin-left: 1em;
+  margin-right: 1em;
+  margin-bottom: 0.5em;
+  background: #dddddd;
+}
+
+@keyframes barAnimation {
+  0% { width: 0em; }
+}
+
+.barrect {
+  margin-top: 0.1em;
+  margin-right: 1em;
+  background: black;
+
+  animation-name: barAnimation;
+  animation-duration: 2s;
+}
+
+.disabled {
+  pointer-events: none;
+  opacity: 0.4;
+}
