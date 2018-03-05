@@ -58,24 +58,24 @@ class Quality extends Component {
   _makeMetricComponents(engines) {
     var metricComp = [];
 
-    for (var i in engines) {
-      if (engines[i] == "TestMetric1") {
-        metricComp.push(<MetricTab title={ engines[i] } compute={
+    for (var key in engines) {
+      if (key == "TestMetric1") {
+        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
           (props) =>
             this.props.actions.computeMetric("TestMetric1", props)
           }/>);
-      } else if (engines[i] == "TestMetric2") {
-        metricComp.push(<MetricTab title={ engines[i] } compute={
+      } else if (key == "TestMetric2") {
+        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
           (props) =>
             this.props.actions.computeMetric("TestMetric2", props)
           }/>);
-      } else if (engines[i] == "TestMetric3") {
-        metricComp.push(<MetricTab title={ engines[i] } compute={
+      } else if (key == "TestMetric3") {
+        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
           (props) =>
             this.props.actions.computeMetric("TestMetric3", props)
           }/>);
       } else {
-        console.assert("Engine ", engines[i], " not supported");
+        console.assert("Engine ", key, " not supported");
       }
     }
 

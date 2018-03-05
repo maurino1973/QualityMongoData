@@ -21,7 +21,7 @@ class TestMetricEngine extends MetricEngine
 {
   constructor() {
     super();
-    this.score = Math.random();
+    this.score = Math.min(Math.random() + 0.01, 1.0);
   }
 
   compute(docs) {
@@ -140,12 +140,17 @@ class TestMetricEngine extends MetricEngine
        collectionsValues : [],
        collectionValuesByKey: [],
        collectionScore: 0,
-       metricEngine: {
+       _metricEngine: {
          "TestMetric1": new TestMetricEngine(),
          "TestMetric2": new TestMetricEngine(),
          "TestMetric3": new TestMetricEngine()
        },
-       metrics: ["TestMetric1", "TestMetric2", "TestMetric3"]
+       //metrics: ["TestMetric1", "TestMetric2", "TestMetric3"]
+       metrics: {
+         "TestMetric1": 0.0,
+         "TestMetric2": 0.0,
+         "TestMetric3": 0.0
+       }
      };
    },
 
@@ -170,16 +175,36 @@ class TestMetricEngine extends MetricEngine
 	 	});
 	 },
 
+   /*
+    * Called when a query or a sampling is made
+    */
    profile() {
      this.onCollectionChanged(this.namespace);
    },
 
+   /*
+    * Compute the metric using specific options
+    * @param {name} is the name of the chosen metric
+    * @param {props} are custom data passed to the metric
+    */
    computeMetric(name, props) {
-     console.assert(name in this.state.metricEngine);
+     console.assert(name in this.state._metricEngine);
 
-     // TODO: cache the documents
-     var metricScore = this.state.metricEngine[name](docs, props);
-     // TODO: save metric score
+     var docs = []; // TODO: cache the documents
+     var metricScore = this.state._metricEngine[name].compute(docs, props);
+
+     var s = this.state.metrics;
+     s[name] = metricScore;
+     this.setState({metrics: {}});  //HACK: This allow rerendering...
+     this.setState({metrics: s});
+
+     var cScore = 0.0;
+     for (var mName in s) {
+       cScore += s[mName];
+     }
+     cScore /= Object.keys(s).length; //TODO: Use weights
+     console.assert(cScore >= 0.0 && cScore <= 1.0);
+     this.setState({collectionScore: 100 * cScore});
    },
 
 	 showKeyValues(el,type,rowElement){
@@ -204,7 +229,6 @@ class TestMetricEngine extends MetricEngine
 	 							}
 
 	 							var insert = "null";
-	 							//FIXME: toInsert can be null...
 	 							if (toInsert != null) {
                   insert = toInsert.toString();
                 }
@@ -351,21 +375,12 @@ class TestMetricEngine extends MetricEngine
 
 	 	}
 
-	 	var cScore = 0;
 	 	for(var i = 0; i < metaData.length;i++) {
 	 		var percentage = metaData[i].count / obj.length;
 	 		metaData[i].percentage = Math.round(percentage * 100*100)/100;
-
-      // TODO: Make a better row score algorithm
-      cScore += metaData[i].percentage;
 	 	}
 
-	 	cScore /= metaData.length;
-
 	 	this.collectionValues = metaData;
-
-    //TODO: Use the results from the metrics
-    this.setState({collectionScore: cScore});
 	 	return metaData;
 	 },
 	/*

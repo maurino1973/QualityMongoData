@@ -83,6 +83,18 @@ class MetricTab extends Tab
     super(props);
   }
 
+  renderContent() {
+    // TODO: Change styles.dashboardScore name to something more generic?
+    return (
+      <div>
+        Here goes information and options for current metric.
+        <div className={ classnames(styles.dashboardScore) }>
+          Metric score: { this.props.score.toFixed(2) }
+        </div>
+      </div>
+    );
+  }
+
   renderFooter() {
     return (
       <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
@@ -90,7 +102,6 @@ class MetricTab extends Tab
   }
 
   _compute() {
-    // TODO: send notification to store
     console.log("click", this.props.title);
     this.props.compute({"test": this.props.title});
   }
