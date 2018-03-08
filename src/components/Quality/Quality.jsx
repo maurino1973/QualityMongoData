@@ -45,6 +45,9 @@ class Quality extends Component {
             onApply={this.onApplyClicked.bind(this)}
             onReset={this.onResetClicked.bind(this)}
           />
+          <div className={ classnames(styles.menu) }>
+            <input type="button" value="Sample"/>
+          </div>
 
           <PluginTabBar
             store={this.props}

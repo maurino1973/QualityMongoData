@@ -13,7 +13,7 @@ class MetricEngine
    * The method must return a number >= 0.0 and <= 1.0
    */
   compute(docs) {
-    // TODO: Override me
+    // Override me
   }
 }
 
@@ -145,13 +145,21 @@ class TestMetricEngine extends MetricEngine
          "TestMetric2": new TestMetricEngine(),
          "TestMetric3": new TestMetricEngine()
        },
-       //metrics: ["TestMetric1", "TestMetric2", "TestMetric3"]
+       // <name>: <score>
        metrics: {
          "TestMetric1": 0.0,
          "TestMetric2": 0.0,
          "TestMetric3": 0.0
+       },
+
+       weights: {
+         "TestMetric1": 1.0,
+         "TestMetric2": 1.0,
+         "TestMetric3": 1.0
        }
      };
+     //NOTE: Be carefull with names
+     //TODO: This should be refactored...
    },
 
    onQueryChanged(state) {
@@ -193,16 +201,40 @@ class TestMetricEngine extends MetricEngine
      var docs = []; // TODO: cache the documents
      var metricScore = this.state._metricEngine[name].compute(docs, props);
 
-     var s = this.state.metrics;
+     var s = _.clone(this.state.metrics);
      s[name] = metricScore;
-     this.setState({metrics: {}});  //HACK: This allow rerendering...
      this.setState({metrics: s});
 
-     var cScore = 0.0;
-     for (var mName in s) {
-       cScore += s[mName];
+     this.computeGlobalScore(s, this.state.weights);
+   },
+
+   changeWeights(weights) {
+     var w = _.clone(weights);
+     this.setState({weights: w});
+
+     this.computeGlobalScore(this.state.metrics, w);
+   },
+
+   computeGlobalScore(metrics, weights) {
+     /*
+      * NOTE: I use relative weights to simplify things, therefore I must convert
+      * these weights to absolute ones
+      */
+     var sum = 0.0;
+     for (var key in weights) {
+       sum += weights[key];
      }
-     cScore /= Object.keys(s).length; //TODO: Use weights
+     const x = 1.0/sum;
+     var absWeights = {};
+     for (var key in weights) {
+       absWeights[key] = weights[key] * x;
+     }
+
+     var cScore = 0.0;
+     for (var mName in metrics) {
+       cScore += metrics[mName] * absWeights[mName];
+     }
+
      console.assert(cScore >= 0.0 && cScore <= 1.0);
      this.setState({collectionScore: 100 * cScore});
    },
