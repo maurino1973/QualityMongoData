@@ -224,7 +224,11 @@ class TestMetricEngine extends MetricEngine
      for (var key in weights) {
        sum += weights[key];
      }
-     const x = 1.0/sum;
+     var x = 0.0;
+
+     if (sum > 0.0) {
+       x = 1.0/sum;
+     }
      var absWeights = {};
      for (var key in weights) {
        absWeights[key] = weights[key] * x;
@@ -234,8 +238,6 @@ class TestMetricEngine extends MetricEngine
      for (var mName in metrics) {
        cScore += metrics[mName] * absWeights[mName];
      }
-
-     console.assert(cScore >= 0.0 && cScore <= 1.0);
      this.setState({collectionScore: 100 * cScore});
    },
 

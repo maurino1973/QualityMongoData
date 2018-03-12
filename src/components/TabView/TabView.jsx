@@ -45,7 +45,11 @@ class RangeGroup extends Component {
     for (var key in relWeights) {
       sum += relWeights[key];
     }
-    const x = 1.0/sum;
+    var x = 0.0;
+    if (sum > 0.0) {
+      x = 1.0/sum;
+    }
+
     var absWeights = {};
     for (var key in relWeights) {
       absWeights[key] = relWeights[key] * x;
@@ -76,7 +80,7 @@ class Range extends Component {
 
   render() {
     return (
-      <div className={ classnames(styles.weightBlock) }>
+      <div style={{"opacity": this.props.value > 0.0 ? 1.0 : 0.4}} className={ classnames(styles.weightBlock) }>
         <span>{ this.props.metricName }</span>
         <input className={ classnames(styles.weightRange) }
               type="range"
