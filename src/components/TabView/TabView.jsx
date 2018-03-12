@@ -4,32 +4,92 @@ import classnames from 'classnames';
 
 import styles from './TabView.less';
 
+class RangeGroup extends Component {
+  static displayName = 'Range';
+
+  constructor(props) {
+    super(props);
+  }
+
+  notifyChange(id, val) {
+    var w = this.props.weights;
+    w[id] = val;
+    this.props.store.actions.changeWeights(w);
+  }
+
+  render() {
+    return (
+      <ul>
+        {
+          this.props.metrics.map((curr, index) => {
+            return (
+              <li>
+                <Range
+                  metricName={curr.props.title}
+                  value={this.props.weights[curr.props.title]}
+                  absValue={this._toAbsoluteWeights(this.props.weights)[curr.props.title]}
+                  owner={this}
+                  id={curr.props.title}
+                />
+              </li>
+            );
+          })
+        }
+      </ul>
+    );
+  }
+
+  //NOTE: This is a duplication from the store
+  _toAbsoluteWeights(relWeights) {
+    var sum = 0.0;
+    for (var key in relWeights) {
+      sum += relWeights[key];
+    }
+    var x = 0.0;
+    if (sum > 0.0) {
+      x = 1.0/sum;
+    }
+
+    var absWeights = {};
+    for (var key in relWeights) {
+      absWeights[key] = relWeights[key] * x;
+    }
+
+    return absWeights;
+  }
+}
+
 class Range extends Component {
   static displayName = 'Range';
 
   constructor(props) {
     super(props);
-    this.state = {
-      value: this.props.startValue
-    };
   }
 
   handleChange(event) {
-    this.setState({value: event.currentTarget.valueAsNumber});
+    this.setVal(event.currentTarget.valueAsNumber);
+  }
+
+  setVal(val) {
+    var last = this.props.value;
+
+    if (last != val) {
+      this.props.owner.notifyChange(this.props.id, val);
+    }
   }
 
   render() {
     return (
-      <div className={ classnames(styles.weightBlock) }>
+      <div style={{"opacity": this.props.value > 0.0 ? 1.0 : 0.4}} className={ classnames(styles.weightBlock) }>
         <span>{ this.props.metricName }</span>
         <input className={ classnames(styles.weightRange) }
               type="range"
-              value={ this.state.value }
+              value={ this.props.value }
               min="0.0"
               max="1.0"
               step="0.01"
               onChange={this.handleChange.bind(this)}/>
-        <span className={ classnames(styles.weightLabel) }>{ this.state.value.toFixed(2) }</span>
+        <span className={ classnames(styles.weightLabel) }>{ this.props.absValue.toFixed(2) }</span>
       </div>
     );
   }
@@ -83,6 +143,18 @@ class MetricTab extends Tab
     super(props);
   }
 
+  renderContent() {
+    // TODO: Change styles.dashboardScore name to something more generic?
+    return (
+      <div>
+        Here goes information and options for current metric.
+        <div className={ classnames(styles.dashboardScore) }>
+          Metric score: { (100*this.props.score).toFixed(2) }
+        </div>
+      </div>
+    );
+  }
+
   renderFooter() {
     return (
       <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
@@ -90,7 +162,6 @@ class MetricTab extends Tab
   }
 
   _compute() {
-    // TODO: send notification to store
     console.log("click", this.props.title);
     this.props.compute({"test": this.props.title});
   }
@@ -107,25 +178,21 @@ class DashBoard extends Tab {
   }
 
   renderContent() {
-    //TODO: extract style
     return (
       <div>
         <p>Shows global stats.</p>
         <p>Registered metrics are:</p>
         <ul>
           {
-            this.props.metrics.map((curr) => {
-              return (
-                <li>
-                  <Range metricName={curr.props.title} startValue={1.0/this.props.metrics.length}/>
-                </li>
-              );
-            })
+            <RangeGroup
+              metrics={this.props.metrics}
+              store={this.props.store}
+              weights={this.props.store.weights}/>
           }
         </ul>
 
         <div className={ classnames(styles.dashboardScore) }>
-          Quality score: { this.props.store.collectionScore.toFixed(2) }
+          Quality score: { this.props.store.collectionScore.toFixed(1) }
         </div>
 
         Other stats here.
@@ -263,7 +330,7 @@ class ProfileTab extends Tab
         }
       </span>
     );
-    //TODO: Remove join: needed for interaction
+    //TODO: Remove join: old way to do interaction interaction
   }
 }
 

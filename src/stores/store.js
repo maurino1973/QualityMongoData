@@ -13,7 +13,7 @@ class MetricEngine
    * The method must return a number >= 0.0 and <= 1.0
    */
   compute(docs) {
-    // TODO: Override me
+    // Override me
   }
 }
 
@@ -21,7 +21,7 @@ class TestMetricEngine extends MetricEngine
 {
   constructor() {
     super();
-    this.score = Math.random();
+    this.score = Math.min(Math.random() + 0.01, 1.0);
   }
 
   compute(docs) {
@@ -140,13 +140,26 @@ class TestMetricEngine extends MetricEngine
        collectionsValues : [],
        collectionValuesByKey: [],
        collectionScore: 0,
-       metricEngine: {
+       _metricEngine: {
          "TestMetric1": new TestMetricEngine(),
          "TestMetric2": new TestMetricEngine(),
          "TestMetric3": new TestMetricEngine()
        },
-       metrics: ["TestMetric1", "TestMetric2", "TestMetric3"]
+       // <name>: <score>
+       metrics: {
+         "TestMetric1": 0.0,
+         "TestMetric2": 0.0,
+         "TestMetric3": 0.0
+       },
+
+       weights: {
+         "TestMetric1": 1.0,
+         "TestMetric2": 1.0,
+         "TestMetric3": 1.0
+       }
      };
+     //NOTE: Be carefull with names
+     //TODO: This should be refactored...
    },
 
    onQueryChanged(state) {
@@ -170,16 +183,62 @@ class TestMetricEngine extends MetricEngine
 	 	});
 	 },
 
+   /*
+    * Called when a query or a sampling is made
+    */
    profile() {
      this.onCollectionChanged(this.namespace);
    },
 
+   /*
+    * Compute the metric using specific options
+    * @param {name} is the name of the chosen metric
+    * @param {props} are custom data passed to the metric
+    */
    computeMetric(name, props) {
-     console.assert(name in this.state.metricEngine);
+     console.assert(name in this.state._metricEngine);
 
-     // TODO: cache the documents
-     var metricScore = this.state.metricEngine[name](docs, props);
-     // TODO: save metric score
+     var docs = []; // TODO: cache the documents
+     var metricScore = this.state._metricEngine[name].compute(docs, props);
+
+     var s = _.clone(this.state.metrics);
+     s[name] = metricScore;
+     this.setState({metrics: s});
+
+     this.computeGlobalScore(s, this.state.weights);
+   },
+
+   changeWeights(weights) {
+     var w = _.clone(weights);
+     this.setState({weights: w});
+
+     this.computeGlobalScore(this.state.metrics, w);
+   },
+
+   computeGlobalScore(metrics, weights) {
+     /*
+      * NOTE: I use relative weights to simplify things, therefore I must convert
+      * these weights to absolute ones
+      */
+     var sum = 0.0;
+     for (var key in weights) {
+       sum += weights[key];
+     }
+     var x = 0.0;
+
+     if (sum > 0.0) {
+       x = 1.0/sum;
+     }
+     var absWeights = {};
+     for (var key in weights) {
+       absWeights[key] = weights[key] * x;
+     }
+
+     var cScore = 0.0;
+     for (var mName in metrics) {
+       cScore += metrics[mName] * absWeights[mName];
+     }
+     this.setState({collectionScore: 100 * cScore});
    },
 
 	 showKeyValues(el,type,rowElement){
@@ -204,7 +263,6 @@ class TestMetricEngine extends MetricEngine
 	 							}
 
 	 							var insert = "null";
-	 							//FIXME: toInsert can be null...
 	 							if (toInsert != null) {
                   insert = toInsert.toString();
                 }
@@ -351,21 +409,12 @@ class TestMetricEngine extends MetricEngine
 
 	 	}
 
-	 	var cScore = 0;
 	 	for(var i = 0; i < metaData.length;i++) {
 	 		var percentage = metaData[i].count / obj.length;
 	 		metaData[i].percentage = Math.round(percentage * 100*100)/100;
-
-      // TODO: Make a better row score algorithm
-      cScore += metaData[i].percentage;
 	 	}
 
-	 	cScore /= metaData.length;
-
 	 	this.collectionValues = metaData;
-
-    //TODO: Use the results from the metrics
-    this.setState({collectionScore: cScore});
 	 	return metaData;
 	 },
 	/*
