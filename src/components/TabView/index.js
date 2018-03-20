@@ -1,4 +1,5 @@
-import TabBar, { MetricTab } from './TabView';
+import PluginTabBar from './TabView';
+import MetricTab from './Tab';
 
-export default TabBar;
+export default PluginTabBar;
 export { MetricTab };

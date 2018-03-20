@@ -25,6 +25,7 @@ class TestMetricEngine extends MetricEngine
   }
 
   compute(docs) {
+    console.log("Test metric docs:", docs);
     return this.score;
   }
 }
@@ -132,6 +133,20 @@ class TestMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
+     var metricEngines = {
+       "CompletenessMetric": new TestMetricEngine(),
+       "TestMetric1": new TestMetricEngine(),
+       "TestMetric2": new TestMetricEngine()
+     };
+
+     var metrics = {};
+     var weights = {};
+
+     for (var metricName in metricEngines) {
+       metrics[metricName] = 0.0;
+       weights[metricName] = 0.0;
+     }
+
      return {
        status: 'enabled',
        database: '',
@@ -140,37 +155,21 @@ class TestMetricEngine extends MetricEngine
        collectionsValues : [],
        collectionValuesByKey: [],
        collectionScore: 0,
-       _metricEngine: {
-         "TestMetric1": new TestMetricEngine(),
-         "TestMetric2": new TestMetricEngine(),
-         "TestMetric3": new TestMetricEngine()
-       },
-       // <name>: <score>
-       metrics: {
-         "TestMetric1": 0.0,
-         "TestMetric2": 0.0,
-         "TestMetric3": 0.0
-       },
-
-       weights: {
-         "TestMetric1": 1.0,
-         "TestMetric2": 1.0,
-         "TestMetric3": 1.0
-       }
+       _metricEngine: metricEngines,
+       metrics: metrics,
+       weights: weights,
+       _docs: []
      };
-     //NOTE: Be carefull with names
-     //TODO: This should be refactored...
    },
 
    onQueryChanged(state) {
-     // TODO: Review this code
      if (state.ns && toNS(state.ns).collection) {
        this.filter  = state.filter;
        this.project = state.project;
        this.sort    = state.sort;
        this.skip    = state.skip;
        this.limit   = state.limit;
-       this.ns      = state.ns;
+       this.namespace = state.ns;
      }
      console.log("onQueryChanged");
    },
@@ -188,6 +187,16 @@ class TestMetricEngine extends MetricEngine
     */
    profile() {
      this.onCollectionChanged(this.namespace);
+     //TODO: Change position, see onCollectionChanged TODO
+     const findOptions = {
+       sort: this.sort,
+       fields: this.project,
+       skip: this.skip,
+       limit: this.limit
+     };
+     this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
+        this.setState({_docs : docs});
+     });
    },
 
    /*
@@ -198,14 +207,19 @@ class TestMetricEngine extends MetricEngine
    computeMetric(name, props) {
      console.assert(name in this.state._metricEngine);
 
-     var docs = []; // TODO: cache the documents
+     var docs = this.state._docs;
      var metricScore = this.state._metricEngine[name].compute(docs, props);
 
-     var s = _.clone(this.state.metrics);
-     s[name] = metricScore;
-     this.setState({metrics: s});
+     var newMetrics = _.clone(this.state.metrics);
+     var newWeights = _.clone(this.state.weights);
+     newMetrics[name] = metricScore;
+     //Activate weights
+     newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
+     this.setState({metrics: newMetrics,
+                    weights: newWeights
+     });
 
-     this.computeGlobalScore(s, this.state.weights);
+     this.computeGlobalScore(newMetrics, newWeights);
    },
 
    changeWeights(weights) {
@@ -323,9 +337,6 @@ class TestMetricEngine extends MetricEngine
 	 							}
 	 						}
 	 					}
-
-
-
 	 				}
 	 			}
 	 			for(var i = 0; i<collectionToSet.length;i++){
@@ -426,6 +437,7 @@ class TestMetricEngine extends MetricEngine
 		this.setState(this.getInitialState());
 	},
 
+  //TODO: calculate on query submission or sampling
 	onCollectionChanged(namespace) {
     console.log("Collection Changed");
 		this.setState(this.getInitialState());
