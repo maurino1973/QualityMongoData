@@ -19,22 +19,17 @@ class DashBoard extends Tab {
   renderContent() {
     return (
       <div>
-        <p>Shows global stats.</p>
-        <p>Registered metrics are:</p>
-        <ul>
-          {
-            <RangeGroup
-              metrics={this.props.metrics}
-              store={this.props.store}
-              weights={this.props.store.weights}/>
-          }
-        </ul>
-
         <div className={ classnames(styles.dashboardScore) }>
           Quality score: { this.props.store.collectionScore.toFixed(1) }
         </div>
-
-        Other stats here.
+        <p>Change weights for the metrics:</p>
+        {
+          <RangeGroup
+            metrics={this.props.metrics}
+            store={this.props.store}
+            weights={this.props.store.weights}
+          />
+        }
       </div>
     );
   }

@@ -30,6 +30,44 @@ class TestMetricEngine extends MetricEngine
   }
 }
 
+class CompletenessMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+  }
+
+  compute(docs) {
+    if (docs.length == 0) {
+      return 0.0;
+    }
+
+    var occurrences = {};
+
+    for (var i in docs) {
+      for (var key in docs[i]) {
+        if (key in occurrences) {
+          occurrences[key] += 1;
+        } else {
+          occurrences[key] = 1;
+        }
+      }
+    }
+
+    // Normalize data
+    for (var key in occurrences) {
+      occurrences[key] = occurrences[key] / docs.length;
+    }
+
+    // Metric score is computed as a simple algebraic mean
+    var score = 0.0;
+    for (var key in occurrences) {
+      score += occurrences[key]
+    }
+    score /= Object.keys(occurrences).length;
+    return score;
+  }
+}
+
 /**
  * Performance Plugin store.
  */
@@ -134,7 +172,7 @@ class TestMetricEngine extends MetricEngine
 	 */
 	 getInitialState() {
      var metricEngines = {
-       "CompletenessMetric": new TestMetricEngine(),
+       "CompletenessMetric": new CompletenessMetricEngine(),
        "TestMetric1": new TestMetricEngine(),
        "TestMetric2": new TestMetricEngine()
      };
@@ -445,6 +483,7 @@ class TestMetricEngine extends MetricEngine
 		this.dataService.find(namespace, {}, {}, (errors,dataReturnedFind) => {
 			var metaData = this.calculateMetaData(dataReturnedFind);
 			this.setState({collectionsValues : metaData});
+      this.setState({_docs : dataReturnedFind});  // TODO: Temporary??
 		});
 	},
 
