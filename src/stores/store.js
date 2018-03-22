@@ -190,8 +190,8 @@ class CompletenessMetricEngine extends MetricEngine
        database: '',
        collections : [],
        databases : [],
-       collectionsValues : [],
-       collectionValuesByKey: [],
+       collectionsValues : {},
+       collectionValuesByKey: {},
        collectionScore: 0,
        _metricEngine: metricEngines,
        metrics: metrics,
@@ -224,8 +224,9 @@ class CompletenessMetricEngine extends MetricEngine
     * Called when a query or a sampling is made
     */
    profile() {
-     this.onCollectionChanged(this.namespace);
+     //this.onCollectionChanged(this.namespace);
      //TODO: Change position, see onCollectionChanged TODO
+     this.setState(this.getInitialState());
      const findOptions = {
        sort: this.sort,
        fields: this.project,
@@ -233,7 +234,10 @@ class CompletenessMetricEngine extends MetricEngine
        limit: this.limit
      };
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
+       var data = this._calculateMetaData(docs);
         this.setState({_docs : docs});
+        this.setState({collectionsValues: data[0],
+                       collectionValuesByKey: data[1]});
      });
    },
 
@@ -257,17 +261,17 @@ class CompletenessMetricEngine extends MetricEngine
                     weights: newWeights
      });
 
-     this.computeGlobalScore(newMetrics, newWeights);
+     this._computeGlobalScore(newMetrics, newWeights);
    },
 
    changeWeights(weights) {
      var w = _.clone(weights);
      this.setState({weights: w});
 
-     this.computeGlobalScore(this.state.metrics, w);
+     this._computeGlobalScore(this.state.metrics, w);
    },
 
-   computeGlobalScore(metrics, weights) {
+   _computeGlobalScore(metrics, weights) {
      /*
       * NOTE: I use relative weights to simplify things, therefore I must convert
       * these weights to absolute ones
@@ -293,263 +297,151 @@ class CompletenessMetricEngine extends MetricEngine
      this.setState({collectionScore: 100 * cScore});
    },
 
-	 showKeyValues(el,type,rowElement){
-	 	var barElements = document.getElementsByClassName('bar');
-	 	for(var i=0;i<barElements.length;i++){
-	 		barElements[i].style.display = "none";
-	 	}
-	 	if(type!="object"){
-	 		document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
-	 		this.dataService.find(this.namespace, {}, {}, (errors,dataReturnedFind) =>{
-	 			var collectionToSet = [];
-	 			for(var i =0 ; i<dataReturnedFind.length ; i++){
-	 				this.keysByShow = Object.keys(dataReturnedFind[i]);
-	 				for(var j=0;j<this.keysByShow.length;j++){
-	 					if(this.keysByShow[j] ==  el){// && this.getCurrentType(dataReturnedFind[i][el.toString()]) == type){
-	 						if(this.valueExistsInMetadata(dataReturnedFind[i][el.toString()],collectionToSet).found === false){
-	 							if(type == "array"){
-	 								var toInsert = "[" + dataReturnedFind[i][el].toString() + "]";
-	 							}
-	 							else {
-	 								var toInsert = dataReturnedFind[i][el];
-	 							}
+   _getDocumentMetadata(doc, metadata) {
+     for (var key in doc) {
+       if (!(key in metadata)) {
+         metadata[key] = {
+           "type" : [],
+           "count" : 0,
+           "percentage": 0,
+           "multiple": false,
+           "cwa": false,
+           "children": {}
+         };
+       }
 
-	 							var insert = "null";
-	 							if (toInsert != null) {
-                  insert = toInsert.toString();
-                }
+       var type = this.getCurrentType(doc[key]);
 
-                collectionToSet.push({"key": insert, "count" : 1});
-	 						}
-	 						else{
-	 							var position = this.valueExistsInMetadata(dataReturnedFind[i][el],collectionToSet).position;
-	 							collectionToSet[position]["count"] ++;
-	 						}
-	 					}
-	 				}
-	 			}
-	 			/*for(var i=0;i<collectionToSet.length;i++){
-	 				for(var j=0; j<collectionToSet.length;j++){
-	 					if(j!= i && collectionToSet[j]["key"] == collectionToSet[i]["key"]){
-	 						collectionToSet.splice(i,1);
-	 					}
-	 				}
-	 			}*/
-	 			console.log("ok here")
-	 			for(var i=0;i<barElements.length;i++){
-	 				barElements[i].style.display = "block";
-	 			}
-	 			this.setState({collectionValuesByKey : collectionToSet});
+       if (metadata[key]["type"].indexOf(type) <= -1) { // No type in metadata
+         if (type == "null") {
+           metadata[key]["cwa"] = true;
+         } else {
+           metadata[key]["multiple"] = true;
+         }
 
-	 		});
-	 	}else{
-	 		var appendedObjectElements = rowElement.getElementsByClassName('appendedObject');
-	 		if(appendedObjectElements.length > 0){
-	 			document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
-	 			return;
-	 		}
-	 		var collectionToSet = [];
-	 		var obj = [];
-	 		this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) =>{
-	 			obj = dataReturnedFind;
-	 			for(var i=0;i<dataReturnedFind.length;i++){
-	 				this.keysByShowObject = Object.keys(dataReturnedFind[i]);
-	 				for(var j=0;j<this.keysByShowObject.length;j++){
+         metadata[key]["type"].push(type);
+         metadata[key]["type"] = metadata[key]["type"].sort();
+       }
 
-	 					if(this.keysByShowObject[j] == el){
-	 						var keysByObjectTemp = Object.keys(dataReturnedFind[i][el]);
-	 						for(var z=0 ; z<keysByObjectTemp.length;z++){
-	 							var isKeyPresent = false;
-	 							var type = this.getCurrentType(dataReturnedFind[i][el.toString()][keysByObjectTemp[z]]);
-	 								if(this.keyExistsInMetadata(keysByObjectTemp[z], type, collectionToSet).found){
-	 										isKeyPresent= true;
-	 								}
-	 							if(!isKeyPresent)
-	 								collectionToSet.push({"key" : keysByObjectTemp[z], "type" : this.getCurrentType(dataReturnedFind[i][el.toString()][keysByObjectTemp[z]]), "count" : 1})
-	 							else
-	 							{
-	 								for(var p=0;p<collectionToSet.length;p++){
-	 									if(collectionToSet[p].key == keysByObjectTemp[z])
-	 										collectionToSet[p].count ++;
-	 								}
-	 							}
-	 						}
-	 					}
-	 				}
-	 			}
-	 			for(var i = 0; i<collectionToSet.length;i++){
-	 				var percentage = collectionToSet[i]["count"]/ obj.length;
-	 				collectionToSet[i].percentage = percentage * 100 ;
-	 			}
-	 			if(collectionToSet.length == 0){
-	 				var rowToAppendError = document.createElement('div');
-	 				rowToAppendError.innerHTML = 'An error has occurred while retrieving data from this Object. This is probably because all objects are empty.';
-	 				rowToAppendError.style.color = 'red';
-	 				rowToAppendError.style.fontWeight = 'bold';
-	 				rowToAppendError.className = 'row appendedObject col-md-offset-1 col-md-11';
-	 				rowElement.appendChild(rowToAppendError);
-	 				return;
-	 			}
-	 			var rowToAppendMain = document.createElement('div');
-	 			rowToAppendMain.className='row appendedObject col-md-12';
-	 			rowToAppendMain.innerHTML = '<div class="col-md-2 col-md-offset-1"><b>Key</b></div><div class="col-md-1"><b>Type</b></div><div class="col-md-1"><b>Occurrences</b></div><div class="col-md-1 col-md-offset-1"><b>Percentage</b></div>';
-	 			rowElement.appendChild(rowToAppendMain);
-	 			for(var i = 0 ; i<collectionToSet.length;i++){
-	 				var rowToAppend = document.createElement('div');
-	 				rowToAppend.className = 'row appendedObject';
-	 				var tmp= "";
-	 				tmp = tmp + "<div class='col-md-offset-1 col-md-2 key-collection'>"+collectionToSet[i]["key"]+"</div>";
-	 				tmp = tmp + "<div class='col-md-1'>"+collectionToSet[i]["type"]+"</div>";
-	 				tmp = tmp + "<div class='col-md-1'>"+collectionToSet[i]["count"]+"</div>";
-	 				tmp = tmp + "<div class='col-md-1 col-md-offset-1' style='position:relative;right:15px;'>"+collectionToSet[i].percentage+"%</div>";
-	 				rowToAppend.innerHTML = tmp;
-	 				rowElement.appendChild(rowToAppend);
-	 			}
-	 		});
+       if (type == "object" && key != "_id") {    // Ignore private fields
+         metadata[key]["children"] = this._getDocumentMetadata(doc[key], metadata[key]["children"]);
+       }
+       metadata[key]["count"]++;
+     }
+
+     return metadata;
+   },
+
+   _getDocumentFreqs(doc, freqs) {
+     for (var key in doc) {
+       if (!(key in freqs)) {
+         freqs[key] = {
+           "values": {},  //<val> : {"count": 0, "type": null }
+           "children": {}
+         };
+       }
+
+       //NOTE: should I behave in a different way for object type?
+       const currValue = doc[key];
+       var type = this.getCurrentType(currValue);
+
+       //NOTE: What happens if currValue is "32"(string) and an other currValue is 32(number) ?
+       if (currValue in freqs[key]["values"]) {   // Value is not unique
+         freqs[key]["values"][currValue]["count"] += 1;
+       } else {
+         freqs[key]["values"][currValue] = {"count": 1, "type": type };
+       }
+
+       if (type == "object" && key != "_id") {    // Ignore private fields
+         freqs[key]["children"] = this._getDocumentFreqs(doc[key], freqs[key]["children"]);
+       }
+     }
+
+     return freqs;
+   },
+
+   _computePercentage(metadata, docsCount) {
+     for (var key in metadata) {
+       //console.log("key", key, metadata);
+       var percentage = metadata[key].count / docsCount;
+       metadata[key].percentage = Math.round(percentage * 100*100)/100;
+
+       if (Object.keys(metadata[key]["children"]).length > 0) {
+         metadata[key]["children"] = this._computePercentage(metadata[key]["children"], docsCount);
+       }
+     }
+
+     return metadata;
+   },
+
+   //TODO: Change function name
+   _calculateMetaData(docs) {
+     var metadata = {};
+     var frequencies = {};
+     for (var i = 0; i < docs.length; ++i) {
+       metadata = this._getDocumentMetadata(docs[i], metadata);
+       frequencies = this._getDocumentFreqs(docs[i], frequencies);
+     }
+
+     console.log("Freqs", frequencies);
+     //NOTE: Is it better to compute relative frequencies???
+     return [this._computePercentage(metadata, docs.length), frequencies];
+   },
+
+   /*
+    * Listeners for events in Compass
+    */
+   onDatabaseChanged(namespace){
+     console.log("Database Changed");
+     this.setState(this.getInitialState());
+   },
+
+   //TODO: calculate on query submission or sampling
+   onCollectionChanged(namespace) {
+     console.log("Collection Changed");
+     this.setState(this.getInitialState());
+     this.namespace = namespace;
+     this.dataService.find(namespace, {}, {}, (errors,dataReturnedFind) => {
+       var data = this._calculateMetaData(dataReturnedFind);
+       this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+       this.setState({_docs : dataReturnedFind});  // TODO: Temporary??
+     });
+   },
 
 
-	 	}
-	 },
+   //UTILS Javascript functions
+   getCurrentType (value) {
+     //TODO: Add more types
+     //NOTE: Currently "42"(string) is equal to 42(number) and since this implementation number check is before string
+     //      "42"(string) is evaluated as number...
+     if (value == null || value.length == 0) {
+       return "null";
+     } else if (value instanceof Array) {
+       return "array";
+     } else if (new Date(value.toString()) != 'Invalid Date' && isNaN(value.toString())) {
+       return "date";
+     } else if (!isNaN(value.toString())) {
+       return "number";
+     } else if (typeof value == "string") {
+       return "string"
+     } else if (typeof value == "object") {
+       return "object";
+     } else if (typeof value == "boolean") {
+       return "bool";
+     } else {
+       return "unsupported";
+     }
+   },
 
- calculateMetaData(dataReturnedFind){
-	 	var obj = dataReturnedFind;
-	 	var keys = [];
-	 	var metaData = [];
-		var types=[];
-
-	 	for(var x = 0; x < obj.length; x++) {
-      var keys = Object.keys(obj[x]);
-
-      for (var i = 0; i < keys.length; i++) {
-        types=[];
-	 			var type = this.getCurrentType(obj[x][keys[i]]);
-	 			var isKeyPresent = false;
-	 			var positionAndFound = this.keyExistsInMetadata(keys[i], type, metaData);
-
-        if(positionAndFound.position >= 0 && positionAndFound.found) {
-          isKeyPresent = true;
-          types = metaData[positionAndFound.position]["type"];
-          var tmpInt = types.indexOf(type);
-
-          if (tmpInt <= -1){
-            types.push(type);
-
-            metaData[positionAndFound.position]["type"] = types.sort();
-            if (type == "null") {
-              metaData[positionAndFound.position]["cwa"]="Yes";
-            } else {
-              metaData[positionAndFound.position]["multiple"]="Yes";
-            }
-          }
-        }
-
-        if(!isKeyPresent){
-					types.push(type);
-
-	 				metaData.push({"key" : keys[i],
-                         "type" : types,
-                         "count" : 1,
-                         "multiple": "No",
-                         "cwa": "No"});
-				} else {
-	 				metaData[positionAndFound.position]["count"]++;
-	 			}
-	 		}
-
-	 	}
-
-	 	for(var i = 0; i < metaData.length;i++) {
-	 		var percentage = metaData[i].count / obj.length;
-	 		metaData[i].percentage = Math.round(percentage * 100*100)/100;
-	 	}
-
-	 	this.collectionValues = metaData;
-	 	return metaData;
-	 },
-	/*
-	Listeners for events in Compass
-	*/
-
-	onDatabaseChanged(namespace){
-    console.log("Database Changed");
-		this.setState(this.getInitialState());
-	},
-
-  //TODO: calculate on query submission or sampling
-	onCollectionChanged(namespace) {
-    console.log("Collection Changed");
-		this.setState(this.getInitialState());
-		this.namespace = namespace;
-		this.dataService.find(namespace, {}, {}, (errors,dataReturnedFind) => {
-			var metaData = this.calculateMetaData(dataReturnedFind);
-			this.setState({collectionsValues : metaData});
-      this.setState({_docs : dataReturnedFind});  // TODO: Temporary??
-		});
-	},
-
-
-	//UTILS Javascript functions
-	keyExists(key, search) {
-		if (!search || (search.constructor !== Array && search.constructor !== Object)) {
-			return false;
-		}
-		for (var i = 0; i < search.length; i++) {
-			if (search[i] === key) {
-				return true;
-			}
-		}
-		return key in search;
-	},
-	keyExistsInMetadata(key, type, metaData){
-		for(var i =0 ; i<metaData.length ; i++){
-			if(metaData[i]["key"] == key)// && metaData[i]["type"] == type)
-				return{"position" : i, "found" : true}
-		}
-		return {"position": -1, "found" : false};
-	},
-	valueExistsInMetadata(key, metaData){
-		var lastPosition = "";
-		for(var i=0;i<metaData.length;i++){
-			if(metaData[i]["key"] == key){
-				return{"position" : i, "found" : true}
-			}
-		}
-		return {"position" : -1 , "found" : false}
-	},
-	uniq(a){
-		return Array.from(new Set(a));
-	},
-
-	getCurrentType (value){
-		if(value == null || value.length==0){
-			return "null";
-		}
-		else if(value instanceof Array){
-			return "array";
-		}
-		else if(new Date(value.toString()) != 'Invalid Date' && isNaN(value.toString())){
-			return "date";
-		}
-		else if(!isNaN(value.toString())){
-			return "number";
-		}
-		else if(typeof value== "string"){
-			return "string"
-		}
-
-		else if(typeof value == "object"){
-			return "object";
-		}
-	},
-	/**
-	 * log changes to the store as debug messages.
-	 * @param  {Object} prevState   previous state.
-	 */
-	 storeDidUpdate(prevState) {
+   /**
+    * log changes to the store as debug messages.
+    * @param  {Object} prevState   previous state.
+    */
+   storeDidUpdate(prevState) {
      console.log("Store Updated");
-	 	debug('Quality store changed from', prevState, 'to', this.state);
-	 }
-	});
+     debug('Quality store changed from', prevState, 'to', this.state);
+   }
+});
 
 export default QualityStore;
 export { QualityStore };

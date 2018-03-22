@@ -35,6 +35,19 @@ class DashBoard extends Tab {
   }
 }
 
+var Check = function(renderSubTable, collection, level) {
+  return (
+    <div>
+      <input id="check" type="checkbox" className={ classnames(styles.profilemenu) }/>
+      <ol>
+        <li>
+          { renderSubTable(collection["children"], level + 1) }
+        </li>
+      </ol>
+    </div>
+  );
+}
+
 class ProfileTab extends Tab
 {
   static displayName = 'ProfileTab';
@@ -44,13 +57,11 @@ class ProfileTab extends Tab
 
   constructor(props) {
     super(props);
-    this.getValuesByKey = this.getValuesByKeyImpl.bind(this);
-  }
+    this._renderFigure = this._renderFigure.bind(this);
 
-  getValuesByKeyImpl (event) {
-   this.props.store.actions.showKeyValues(event.target.innerHTML,
-                                          event.target.parentNode.parentNode.parentNode.getElementsByClassName("type-collection")[0].getElementsByTagName("i")[0].innerHTML,
-                                          event.target.parentNode.parentNode.parentNode);
+    this.setState({
+      currFreqData: {},
+    });
   }
 
   renderContent() {
@@ -66,7 +77,14 @@ class ProfileTab extends Tab
 
   _renderTable() {
     return (
-      <div>
+      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0)
+    );
+  }
+
+  _renderSubTable(subcollection, subfreqdata, level, keypath) {
+    const tuning = level == 0 ? 0 : 1;
+    return (
+      <div style={{"margin-left": 2*tuning + "em", "margin-right": "0em", "box-shadow": "-2px 2px 10px rgba(0, 0, 0, 0.2}"}} className={styles.tabcontent}>
         <div className="row">
           <div style={ {background:'rgba(0,0,0,0)'} } className={ classnames(styles.rowscore) }></div>
           <div className="col-md-2"><b>Key</b></div>
@@ -79,56 +97,106 @@ class ProfileTab extends Tab
         </div>
 
         {
-          this.props.store.collectionsValues.map((collection) => {
+          Object.keys(subcollection).map((key, index) => {
+            var collection = subcollection[key];
+            var freqData = subfreqdata[key];
             return (
-              <div className="row">
-                <div className="key-collection col-md-2">
-                  <b><a href="#" onClick={this.getValuesByKey}>{collection.key}</a></b>
+              <div>
+                {
+                  Object.keys(collection["children"]).length > 0 ?
+                    <input type="checkbox" id={key + "_id"}/>
+                  : null
+                }
+                <div className={styles.menu}>
+                  <div className="row">
+                    <div className="key-collection col-md-2">
+                      <b>
+                        <label className={styles.keylabel} htmlFor={key + "_id"} onClick = {
+                          () => {
+                            this.setState({currFreqData: freqData});
+                          }
+                        }>
+                          {key}
+                        </label>
+                      </b>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="counter-collection">{collection.count}</span>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="percentage-collection">{collection.percentage}%</span>
+                    </div>
+                    <div className="col-md-1">
+                      { this._renderTypeLabels(collection.type) }
+                    </div>
+                    <div className="col-md-1">
+                      <span className="multiple-collection">{collection.multiple ? "\u2714": "\u2718"}</span>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="cwa-collection">{collection.cwa ? "\u2714": "\u2718"}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-md-1">
-                  <span className="counter-collection">{collection.count}</span>
-                </div>
-                <div className="col-md-1">
-                  <span className="percentage-collection">{collection.percentage}%</span>
-                </div>
-                <div className="col-md-1">
-                  { this._renderTypeLabels(collection.type) }
-                </div>
-                <div className="col-md-1">
-                  <span className="multiple-collection">{collection.multiple}</span>
-                </div>
-                <div className="col-md-1">
-                  <span className="cwa-collection">{collection.cwa}</span>
-                </div>
+                {
+                  Object.keys(collection["children"]).length > 0 ?
+                    <div className={styles.subtree}>
+                      { this._renderSubTable(collection["children"], freqData["children"], level + 1) }
+                    </div>
+                  : null
+                }
+
               </div>
             );
           })
         }
+
       </div>
     );
   }
 
   _renderFigure() {
-    return (
-      <div>
-        <b>
-          {this.props.store.collectionValuesByKey.length > 0 ? 'Below are listed all values for the key selected' : ''}
-        </b>
-        {
-          this.props.store.collectionValuesByKey.map((currentValue, index) => {
-            return (
-              <div style={ {display: "flex"} }>
-                <div style={{width: currentValue.count + 'em'}} className={ classnames(styles.barrect) }>
+    //NOTE: possible bug...
+    if (this.state) {
+      // Sort frequencies...
+      var pairs = Object.keys(this.state.currFreqData["values"]).map((key) => {
+        return [key, this.state.currFreqData["values"][key]];
+      });
+      pairs.sort(function(a, b) {
+        return b[1]["count"] - a[1]["count"];
+      });
+
+      return (
+        <div>
+          <b>
+            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key selected' : ''}
+          </b>
+
+          {
+            //Object.keys(this.state.currFreqData["values"]).map((key, index) => {
+            pairs.map((item) => {
+              var currentValue = item//this.state.currFreqData["values"][key];
+              return (
+                <div style={ {display: "flex"} }>
+                  <div style={{width: currentValue[1].count + 'em'}} className={ classnames(styles.barrect) }></div>
+                  <div>
+                    {
+                      (() => {
+                        const elisionThreshold = 64;
+                        if (currentValue[0].length > elisionThreshold) { // elision for visual appearance
+                          return currentValue[0].slice(0, elisionThreshold).toString() + "...";
+                        }
+
+                        return currentValue[0];
+                      })()
+                    } has appeared {currentValue[1].count} times of type {currentValue[1].type}
+                  </div>
                 </div>
-                <div>
-                  {currentValue.key} has appeared {currentValue.count} times of type {currentValue.type}
-                </div>
-              </div>
-            );
-          })
-        }
-      </div>
-    );
+              );
+            })
+          }
+        </div>
+      );
+    }
   }
 
   _renderTypeLabels(types) {
@@ -138,6 +206,7 @@ class ProfileTab extends Tab
         'string': {'color': 'deeppink', 'font-weight': 'bold'},
         'null':   {'color': 'darkblue', 'font-style':'italic'},
         'date':   {'color': 'forestgreen', 'font-weight': 'bold'},
+        'bool':   {'color': '#ffc107', 'font-weight': 'bold'}
       };
 
       if (type in tcolordict) {
@@ -164,7 +233,6 @@ class ProfileTab extends Tab
         }
       </span>
     );
-    //TODO: Remove join: old way to do interaction
   }
 }
 
