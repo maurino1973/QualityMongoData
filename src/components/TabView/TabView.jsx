@@ -35,19 +35,6 @@ class DashBoard extends Tab {
   }
 }
 
-var Check = function(renderSubTable, collection, level) {
-  return (
-    <div>
-      <input id="check" type="checkbox" className={ classnames(styles.profilemenu) }/>
-      <ol>
-        <li>
-          { renderSubTable(collection["children"], level + 1) }
-        </li>
-      </ol>
-    </div>
-  );
-}
-
 class ProfileTab extends Tab
 {
   static displayName = 'ProfileTab';
@@ -281,7 +268,7 @@ class PluginTabBar extends Component {
     let activeTab = this.tabs[this.state.activeTab];
 
     return (
-      <div className={styles.tabcontentback}>
+      <div>
         <ul className={styles.tabbar}>
           { Object.keys(this.tabs).map(this.renderTabBar.bind(this)) }
         </ul>

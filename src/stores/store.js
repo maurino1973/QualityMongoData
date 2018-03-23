@@ -341,11 +341,10 @@ class CompletenessMetricEngine extends MetricEngine
          };
        }
 
-       //NOTE: should I behave in a different way for object type?
+       //NOTE: should I compute frequency of object type?
        const currValue = doc[key];
        var type = this.getCurrentType(currValue);
 
-       //NOTE: What happens if currValue is "32"(string) and an other currValue is 32(number) ?
        if (currValue in freqs[key]["values"]) {   // Value is not unique
          freqs[key]["values"][currValue]["count"] += 1;
        } else {

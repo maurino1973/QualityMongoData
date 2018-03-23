@@ -17,7 +17,9 @@ class CompletenessMetricTab extends MetricTab {
   renderContent() {
     return (
       <div>
-        #Insert a description here
+        <p>The completeness metric score the existance of attributes in each document of the current collection.
+        </p>
+        <p>If the same attributes are used sparingly across the documents score would be low, while on opposite if the same attributes are frequently present across the documents score would be high.</p>
       </div>
     );
   }
@@ -55,7 +57,7 @@ class Quality extends Component {
   render() {
     console.log("rendering");
     return (
-        <div>
+        <div className={classnames(styles.root)}>
           <this.queryBar
             buttonLabel="Find"
             onApply={this.onApplyClicked.bind(this)}
