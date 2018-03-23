@@ -8,7 +8,6 @@ const QualityActions = Reflux.createActions([
   'profile',
   'computeMetric',
   'changeWeights',
-  'showKeyValues'
 ]);
 
 export default QualityActions;

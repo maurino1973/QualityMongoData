@@ -5,7 +5,25 @@ import ToggleButton from 'components/toggle-button';
 
 import styles from './Quality.less';
 
-import PluginTabBar, { MetricTab } from 'components/TabView';
+import PluginTabBar, {MetricTab} from 'components/TabView';
+
+class CompletenessMetricTab extends MetricTab {
+  static displayName = 'CompletenessMetricTab';
+
+  constructor(props) {
+    super(props);
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>The completeness metric score the existance of attributes in each document of the current collection.
+        </p>
+        <p>If the same attributes are used sparingly across the documents score would be low, while on opposite if the same attributes are frequently present across the documents score would be high.</p>
+      </div>
+    );
+  }
+}
 
 class Quality extends Component {
   static displayName = 'QualityComponent';
@@ -39,7 +57,7 @@ class Quality extends Component {
   render() {
     console.log("rendering");
     return (
-        <div>
+        <div className={classnames(styles.root)}>
           <this.queryBar
             buttonLabel="Find"
             onApply={this.onApplyClicked.bind(this)}
@@ -53,7 +71,6 @@ class Quality extends Component {
             store={this.props}
             metrics={this._makeMetricComponents(this.props.metrics)}>
           </PluginTabBar>
-
         </div>
     );
   }
@@ -61,40 +78,27 @@ class Quality extends Component {
   _makeMetricComponents(engines) {
     var metricComp = [];
 
-    for (var key in engines) {
-      if (key == "TestMetric1") {
-        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
+    //NOTE: Be careful with names...
+    //NOTE: Format is <EngineName>: [<ComponentTab>, <TabName>]
+    //TODO: Place this in ctor
+    var metricCompMap = {
+      "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
+      "TestMetric1":        [MetricTab, "Test Metric 1"],
+      "TestMetric2":        [MetricTab, "Test Metric 2"]
+    };
+
+    for (const key in engines) {
+      if (key in metricCompMap) {
+        const CustomMetric = metricCompMap[key][0];
+        const title = metricCompMap[key][1]
+        metricComp.push(<CustomMetric title={ title } engine={key} score={engines[key]} compute={
           (props) =>
-            this.props.actions.computeMetric("TestMetric1", props)
-          }/>);
-      } else if (key == "TestMetric2") {
-        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
-          (props) =>
-            this.props.actions.computeMetric("TestMetric2", props)
-          }/>);
-      } else if (key == "TestMetric3") {
-        metricComp.push(<MetricTab title={ key } score={engines[key]} compute={
-          (props) =>
-            this.props.actions.computeMetric("TestMetric3", props)
+            this.props.actions.computeMetric(key, props)
           }/>);
       } else {
         console.assert("Engine ", key, " not supported");
       }
     }
-
-    /*
-    for (var name in engines) {
-      if (name == "TestMetric1") {
-        metricComp.push(<MetricTab title={ name } />);
-      } else if (name == "TestMetric2") {
-        metricComp.push(<MetricTab title={ name } />);
-      } else if (name == "TestMetric3") {
-        metricComp.push(<MetricTab title={ name } />);
-      } else {
-        console.assert("Engine ", name, " not supported");
-      }
-    }
-    */
 
     return metricComp;
   }

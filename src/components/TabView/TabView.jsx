@@ -2,170 +2,9 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 
+import {Tab, RangeGroup} from './Tab';
+
 import styles from './TabView.less';
-
-class RangeGroup extends Component {
-  static displayName = 'Range';
-
-  constructor(props) {
-    super(props);
-  }
-
-  notifyChange(id, val) {
-    var w = this.props.weights;
-    w[id] = val;
-    this.props.store.actions.changeWeights(w);
-  }
-
-  render() {
-    return (
-      <ul>
-        {
-          this.props.metrics.map((curr, index) => {
-            return (
-              <li>
-                <Range
-                  metricName={curr.props.title}
-                  value={this.props.weights[curr.props.title]}
-                  absValue={this._toAbsoluteWeights(this.props.weights)[curr.props.title]}
-                  owner={this}
-                  id={curr.props.title}
-                />
-              </li>
-            );
-          })
-        }
-      </ul>
-    );
-  }
-
-  //NOTE: This is a duplication from the store
-  _toAbsoluteWeights(relWeights) {
-    var sum = 0.0;
-    for (var key in relWeights) {
-      sum += relWeights[key];
-    }
-    var x = 0.0;
-    if (sum > 0.0) {
-      x = 1.0/sum;
-    }
-
-    var absWeights = {};
-    for (var key in relWeights) {
-      absWeights[key] = relWeights[key] * x;
-    }
-
-    return absWeights;
-  }
-}
-
-class Range extends Component {
-  static displayName = 'Range';
-
-  constructor(props) {
-    super(props);
-  }
-
-  handleChange(event) {
-    this.setVal(event.currentTarget.valueAsNumber);
-  }
-
-  setVal(val) {
-    var last = this.props.value;
-
-    if (last != val) {
-      this.props.owner.notifyChange(this.props.id, val);
-    }
-  }
-
-  render() {
-    return (
-      <div style={{"opacity": this.props.value > 0.0 ? 1.0 : 0.4}} className={ classnames(styles.weightBlock) }>
-        <span>{ this.props.metricName }</span>
-        <input className={ classnames(styles.weightRange) }
-              type="range"
-              value={ this.props.value }
-              min="0.0"
-              max="1.0"
-              step="0.01"
-              onChange={this.handleChange.bind(this)}/>
-        <span className={ classnames(styles.weightLabel) }>{ this.props.absValue.toFixed(2) }</span>
-      </div>
-    );
-  }
-}
-
-class Tab extends Component {
-  static displayName = 'Tab';
-
-  static propTypes = {
-    title: PropTypes.string
-  };
-
-  constructor(props) {
-    super(props);
-  }
-
-  renderHeader() {
-    // Override me
-  }
-
-  renderContent() {
-    // Override me
-  }
-
-  renderFooter() {
-    // Override me
-  }
-
-  render() {
-    return (
-      <div>
-        <div className={styles.tabheader}>
-          { this.renderHeader() }
-        </div>
-        <div className={styles.tabcontent}>
-          { this.renderContent() }
-        </div>
-        <div className={styles.tabheader}>
-          { this.renderFooter() }
-        </div>
-      </div>
-    );
-  }
-}
-
-class MetricTab extends Tab
-{
-  static displayName = 'MetricTab';
-
-  constructor(props) {
-    super(props);
-  }
-
-  renderContent() {
-    // TODO: Change styles.dashboardScore name to something more generic?
-    return (
-      <div>
-        Here goes information and options for current metric.
-        <div className={ classnames(styles.dashboardScore) }>
-          Metric score: { (100*this.props.score).toFixed(2) }
-        </div>
-      </div>
-    );
-  }
-
-  renderFooter() {
-    return (
-      <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
-    );
-  }
-
-  _compute() {
-    console.log("click", this.props.title);
-    this.props.compute({"test": this.props.title});
-  }
-}
 
 class DashBoard extends Tab {
   static displayName = 'DashBoard';
@@ -180,22 +19,17 @@ class DashBoard extends Tab {
   renderContent() {
     return (
       <div>
-        <p>Shows global stats.</p>
-        <p>Registered metrics are:</p>
-        <ul>
-          {
-            <RangeGroup
-              metrics={this.props.metrics}
-              store={this.props.store}
-              weights={this.props.store.weights}/>
-          }
-        </ul>
-
         <div className={ classnames(styles.dashboardScore) }>
           Quality score: { this.props.store.collectionScore.toFixed(1) }
         </div>
-
-        Other stats here.
+        <p>Change weights for the metrics:</p>
+        {
+          <RangeGroup
+            metrics={this.props.metrics}
+            store={this.props.store}
+            weights={this.props.store.weights}
+          />
+        }
       </div>
     );
   }
@@ -210,13 +44,11 @@ class ProfileTab extends Tab
 
   constructor(props) {
     super(props);
-    this.getValuesByKey = this.getValuesByKeyImpl.bind(this);
-  }
+    this._renderFigure = this._renderFigure.bind(this);
 
-  getValuesByKeyImpl (event) {
-   this.props.store.actions.showKeyValues(event.target.innerHTML,
-                                          event.target.parentNode.parentNode.parentNode.getElementsByClassName("type-collection")[0].getElementsByTagName("i")[0].innerHTML,
-                                          event.target.parentNode.parentNode.parentNode);
+    this.setState({
+      currFreqData: {},
+    });
   }
 
   renderContent() {
@@ -232,7 +64,14 @@ class ProfileTab extends Tab
 
   _renderTable() {
     return (
-      <div>
+      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0)
+    );
+  }
+
+  _renderSubTable(subcollection, subfreqdata, level, keypath) {
+    const tuning = level == 0 ? 0 : 1;
+    return (
+      <div style={{"margin-left": 2*tuning + "em", "margin-right": "0em", "box-shadow": "-2px 2px 10px rgba(0, 0, 0, 0.2}"}} className={styles.tabcontent}>
         <div className="row">
           <div style={ {background:'rgba(0,0,0,0)'} } className={ classnames(styles.rowscore) }></div>
           <div className="col-md-2"><b>Key</b></div>
@@ -245,56 +84,106 @@ class ProfileTab extends Tab
         </div>
 
         {
-          this.props.store.collectionsValues.map((collection) => {
+          Object.keys(subcollection).map((key, index) => {
+            var collection = subcollection[key];
+            var freqData = subfreqdata[key];
             return (
-              <div className="row">
-                <div className="key-collection col-md-2">
-                  <b><a href="#" onClick={this.getValuesByKey}>{collection.key}</a></b>
+              <div>
+                {
+                  Object.keys(collection["children"]).length > 0 ?
+                    <input type="checkbox" id={key + "_id"}/>
+                  : null
+                }
+                <div className={styles.menu}>
+                  <div className="row">
+                    <div className="key-collection col-md-2">
+                      <b>
+                        <label className={styles.keylabel} htmlFor={key + "_id"} onClick = {
+                          () => {
+                            this.setState({currFreqData: freqData});
+                          }
+                        }>
+                          {key}
+                        </label>
+                      </b>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="counter-collection">{collection.count}</span>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="percentage-collection">{collection.percentage}%</span>
+                    </div>
+                    <div className="col-md-1">
+                      { this._renderTypeLabels(collection.type) }
+                    </div>
+                    <div className="col-md-1">
+                      <span className="multiple-collection">{collection.multiple ? "\u2714": "\u2718"}</span>
+                    </div>
+                    <div className="col-md-1">
+                      <span className="cwa-collection">{collection.cwa ? "\u2714": "\u2718"}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-md-1">
-                  <span className="counter-collection">{collection.count}</span>
-                </div>
-                <div className="col-md-1">
-                  <span className="percentage-collection">{collection.percentage}%</span>
-                </div>
-                <div className="col-md-1">
-                  { this._renderTypeLabels(collection.type) }
-                </div>
-                <div className="col-md-1">
-                  <span className="multiple-collection">{collection.multiple}</span>
-                </div>
-                <div className="col-md-1">
-                  <span className="cwa-collection">{collection.cwa}</span>
-                </div>
+                {
+                  Object.keys(collection["children"]).length > 0 ?
+                    <div className={styles.subtree}>
+                      { this._renderSubTable(collection["children"], freqData["children"], level + 1) }
+                    </div>
+                  : null
+                }
+
               </div>
             );
           })
         }
+
       </div>
     );
   }
 
   _renderFigure() {
-    return (
-      <div>
-        <b>
-          {this.props.store.collectionValuesByKey.length > 0 ? 'Below are listed all values for the key selected' : ''}
-        </b>
-        {
-          this.props.store.collectionValuesByKey.map((currentValue, index) => {
-            return (
-              <div style={ {display: "flex"} }>
-                <div style={{width: currentValue.count + 'em'}} className={ classnames(styles.barrect) }>
+    //NOTE: possible bug...
+    if (this.state) {
+      // Sort frequencies...
+      var pairs = Object.keys(this.state.currFreqData["values"]).map((key) => {
+        return [key, this.state.currFreqData["values"][key]];
+      });
+      pairs.sort(function(a, b) {
+        return b[1]["count"] - a[1]["count"];
+      });
+
+      return (
+        <div>
+          <b>
+            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key selected' : ''}
+          </b>
+
+          {
+            //Object.keys(this.state.currFreqData["values"]).map((key, index) => {
+            pairs.map((item) => {
+              var currentValue = item//this.state.currFreqData["values"][key];
+              return (
+                <div style={ {display: "flex"} }>
+                  <div style={{width: currentValue[1].count + 'em'}} className={ classnames(styles.barrect) }></div>
+                  <div>
+                    {
+                      (() => {
+                        const elisionThreshold = 64;
+                        if (currentValue[0].length > elisionThreshold) { // elision for visual appearance
+                          return currentValue[0].slice(0, elisionThreshold).toString() + "...";
+                        }
+
+                        return currentValue[0];
+                      })()
+                    } has appeared {currentValue[1].count} times of type {currentValue[1].type}
+                  </div>
                 </div>
-                <div>
-                  {currentValue.key} has appeared {currentValue.count} times of type {currentValue.type}
-                </div>
-              </div>
-            );
-          })
-        }
-      </div>
-    );
+              );
+            })
+          }
+        </div>
+      );
+    }
   }
 
   _renderTypeLabels(types) {
@@ -304,6 +193,7 @@ class ProfileTab extends Tab
         'string': {'color': 'deeppink', 'font-weight': 'bold'},
         'null':   {'color': 'darkblue', 'font-style':'italic'},
         'date':   {'color': 'forestgreen', 'font-weight': 'bold'},
+        'bool':   {'color': '#ffc107', 'font-weight': 'bold'}
       };
 
       if (type in tcolordict) {
@@ -330,7 +220,6 @@ class ProfileTab extends Tab
         }
       </span>
     );
-    //TODO: Remove join: old way to do interaction interaction
   }
 }
 
@@ -379,7 +268,7 @@ class PluginTabBar extends Component {
     let activeTab = this.tabs[this.state.activeTab];
 
     return (
-      <div className={styles.tabcontentback}>
+      <div>
         <ul className={styles.tabbar}>
           { Object.keys(this.tabs).map(this.renderTabBar.bind(this)) }
         </ul>
@@ -393,14 +282,12 @@ class PluginTabBar extends Component {
   _updateState(props) {
     this.tabs = [];
 
+    this.tabs.push(<DashBoard title="Dashboard" store={ props.store } metrics={ props.metrics }/>);
     for (var i in props.metrics) {
       this.tabs.push(props.metrics[i]);
     }
-
-    this.tabs.push(<ProfileTab title="Profile"   store={ props.store }/>);
-    this.tabs.push(<DashBoard  title="Dashboard" store={ props.store } metrics={ props.metrics }/>);
+    this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
   }
 }
 
 export default PluginTabBar;
-export { MetricTab };

@@ -53,7 +53,7 @@ input[type="range"] {
   position: relative;
   background: #f5f6f7;
   width: 100%;
-  height: 100%; //FIXME: Temporary
+  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -63,8 +63,37 @@ input[type="range"] {
   margin-right: 1em;
   margin-bottom: 1em;
   background: white;
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.2);
   padding-left: 0.5em;
+  padding-bottom: 0.5em;
+}
+
+.subtree {
+}
+
+.menu {
+}
+
+.keylabel {
+  cursor: pointer;
+  user-select: none;
+  color: #4888be;
+}
+
+.keylabel:hover {
+  text-decoration: underline;
+}
+
+input[type=checkbox] {
+  display:none;
+}
+
+input[type=checkbox] + .menu + .subtree {
+  display:none;
+}
+
+input[type=checkbox]:checked + .menu + .subtree {
+  display:block;
 }
 
 .tabheader {
@@ -74,17 +103,13 @@ input[type="range"] {
   background: #dddddd;
 }
 
-@keyframes barAnimation {
-  0% { width: 0em; }
-}
-
 .barrect {
   margin-top: 0.1em;
   margin-right: 1em;
-  background: black;
+  background: #337ab7;
 
-  animation-name: barAnimation;
-  animation-duration: 2s;
+  transition-property: all;
+  transition-duration: 1s;
 }
 
 .disabled {
