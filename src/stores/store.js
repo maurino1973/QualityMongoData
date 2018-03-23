@@ -233,6 +233,7 @@ class CompletenessMetricEngine extends MetricEngine
        skip: this.skip,
        limit: this.limit
      };
+
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
        var data = this._calculateMetaData(docs);
         this.setState({_docs : docs});

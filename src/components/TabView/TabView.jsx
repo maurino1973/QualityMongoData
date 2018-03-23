@@ -6,6 +6,81 @@ import {Tab, RangeGroup} from './Tab';
 
 import styles from './TabView.less';
 
+class Donut extends Component {
+  static displayName = 'PluginTabBar';
+
+  constructor(props) {
+    super(props);
+  }
+
+  _getOffset(score) {
+    console.assert(score >= 0.0 && score <= 1.0);
+    //0.50*full = 180° = 1.0 score
+    //0.75*full =  90° = 0.5 score
+    //1.00*full =   0° = 0.0 score
+    const full = 440;   //NOTE: HARDCODED value refer to css .donut stroke-dasharray: 440
+
+    return full - (full*0.5)*score;
+  }
+
+  // Shamelessly copy and pasted from the stackoverflow
+  // https://stackoverflow.com/questions/17242144/javascript-convert-hsb-hsv-color-to-rgb-accurately
+  _HSVtoRGB(h, s, v) {
+    var r, g, b;
+    var i, f, p, q, t;
+
+    i = Math.floor(h * 6);
+    f = h * 6 - i;
+    p = v * (1 - s);
+    q = v * (1 - f * s);
+    t = v * (1 - (1 - f) * s);
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+    return {
+        r: Math.round(r * 255),
+        g: Math.round(g * 255),
+        b: Math.round(b * 255)
+    };
+  }
+
+  _score2RGB(score) {
+    console.assert(score >= 0.0 && score <= 1.0);
+    return this._HSVtoRGB(0.3 * score, 0.9, 1.0)
+  }
+
+  render() {
+    const color = this._score2RGB(this.props.score);
+    return (
+      <div className={classnames(styles.donutContainer)}>
+        <span>{this.props.name}</span>
+        <svg width="165" height="165" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <title>Layer 1</title>
+            <circle
+              style={{"stroke-dashoffset": 220}}
+              className={classnames(styles.donut2)}
+              r="70" cy="81" cx="81"
+            />
+            <circle
+              style={{"stroke-dashoffset": this._getOffset(this.props.score),
+                      "stroke": "rgb(" + color.r + "," + color.g + "," + color.b + ")"
+              }}
+              className={classnames(styles.donut)}
+              r="70" cy="81" cx="81"
+            />
+          </g>
+        </svg>
+      </div>
+    );
+  }
+}
+
 class DashBoard extends Tab {
   static displayName = 'DashBoard';
   static propTypes = {
@@ -19,17 +94,24 @@ class DashBoard extends Tab {
   renderContent() {
     return (
       <div>
-        <div className={ classnames(styles.dashboardScore) }>
+        <p className={ classnames(styles.dashboardScore) }>
           Quality score: { this.props.store.collectionScore.toFixed(1) }
-        </div>
+        </p>
         <p>Change weights for the metrics:</p>
+        <RangeGroup
+          metrics={this.props.metrics}
+          store={this.props.store}
+          weights={this.props.store.weights}
+        />
+        <div className={ classnames(styles.donutsblock) }>
         {
-          <RangeGroup
-            metrics={this.props.metrics}
-            store={this.props.store}
-            weights={this.props.store.weights}
-          />
+          this.props.metrics.map((item) => {
+            return (
+              <Donut name={item.props["title"]} score={item.props["score"]}/>
+            );
+          })
         }
+        </div>
       </div>
     );
   }
