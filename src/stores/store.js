@@ -374,7 +374,6 @@ class CompletenessMetricEngine extends MetricEngine
      return metadata;
    },
 
-   //TODO: Change function name
    _calculateMetaData(docs) {
      var metadata = {};
      var frequencies = {};
@@ -383,8 +382,6 @@ class CompletenessMetricEngine extends MetricEngine
        frequencies = this._getDocumentFreqs(docs[i], frequencies);
      }
 
-     console.log("Freqs", frequencies);
-     //NOTE: Is it better to compute relative frequencies???
      return [this._computePercentage(metadata, docs.length), frequencies];
    },
 

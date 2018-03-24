@@ -58,7 +58,13 @@ class Donut extends Component {
     const color = this._score2RGB(this.props.score);
     return (
       <div className={classnames(styles.donutContainer)}>
-        <span>{this.props.name}</span>
+        <span style={{"line-height": "90px"}}>
+          { (this.props.score * 100).toFixed(0) + "%"}
+        </span>
+        <span>
+          {this.props.name}
+        </span>
+
         <svg width="165" height="165" xmlns="http://www.w3.org/2000/svg">
           <g>
             <title>Layer 1</title>
@@ -95,22 +101,24 @@ class DashBoard extends Tab {
     return (
       <div>
         <p className={ classnames(styles.dashboardScore) }>
-          Quality score: { this.props.store.collectionScore.toFixed(1) }
+          Quality score: { this.props.store.collectionScore.toFixed(1) + "%"}
         </p>
         <p>Change weights for the metrics:</p>
+
         <RangeGroup
           metrics={this.props.metrics}
           store={this.props.store}
           weights={this.props.store.weights}
         />
+
         <div className={ classnames(styles.donutsblock) }>
-        {
-          this.props.metrics.map((item) => {
-            return (
-              <Donut name={item.props["title"]} score={item.props["score"]}/>
-            );
-          })
-        }
+          {
+            this.props.metrics.map((item) => {
+              return (
+                <Donut name={item.props["title"]} score={item.props["score"]}/>
+              );
+            })
+          }
         </div>
       </div>
     );
@@ -234,6 +242,20 @@ class ProfileTab extends Tab
         return b[1]["count"] - a[1]["count"];
       });
 
+      // Normalize frequencies
+      var maxFreq = 0;
+      for (var i in pairs) {
+        if (pairs[i][1].count > maxFreq) {
+          maxFreq = pairs[i][1].count;
+        }
+      }
+      console.assert(maxFreq != 0.0);
+      pairs = pairs.map((item) => {
+        return (
+          [item[0], item[1], item[1].count / maxFreq]
+        );
+      });
+
       return (
         <div>
           <b>
@@ -241,23 +263,24 @@ class ProfileTab extends Tab
           </b>
 
           {
-            //Object.keys(this.state.currFreqData["values"]).map((key, index) => {
             pairs.map((item) => {
-              var currentValue = item//this.state.currFreqData["values"][key];
+              // item[0] is value
+              // item[1] is {count, type}
+              // item[2] is relative frequency
               return (
                 <div style={ {display: "flex"} }>
-                  <div style={{width: currentValue[1].count + 'em'}} className={ classnames(styles.barrect) }></div>
+                  <div style={{width: Math.max(20*item[2], 0.1) + 'em'}} className={ classnames(styles.barrect) }></div>
                   <div>
                     {
                       (() => {
                         const elisionThreshold = 64;
-                        if (currentValue[0].length > elisionThreshold) { // elision for visual appearance
-                          return currentValue[0].slice(0, elisionThreshold).toString() + "...";
+                        if (item[0].length > elisionThreshold) { // elision for visual appearance
+                          return item[0].slice(0, elisionThreshold).toString() + "...";
                         }
 
-                        return currentValue[0];
+                        return item[0];
                       })()
-                    } has appeared {currentValue[1].count} times of type {currentValue[1].type}
+                    } has appeared {item[1].count} times of type {item[1].type}
                   </div>
                 </div>
               );

@@ -32,7 +32,7 @@ Consistency (multiple type)
 
 ## next to do
 
-- use color schema for OK, KO elements  
+- use color schema for OK, KO elements
 
 - profiling on sampling data/query result
 

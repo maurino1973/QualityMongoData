@@ -23,7 +23,7 @@ class CompletenessMetricTab extends MetricTab {
         <p>
           The score would be low if the same attributes are used sparingly across the documents.
           On opposite it would be high if the same attributes are frequently present.
-        .</p>
+        </p>
       </div>
     );
   }
