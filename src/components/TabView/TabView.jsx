@@ -138,6 +138,7 @@ class ProfileTab extends Tab
 
     this.setState({
       currFreqData: {},
+      currKey: ""
     });
   }
 
@@ -154,7 +155,7 @@ class ProfileTab extends Tab
 
   _renderTable() {
     return (
-      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0)
+      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0, [])
     );
   }
 
@@ -177,6 +178,8 @@ class ProfileTab extends Tab
           Object.keys(subcollection).map((key, index) => {
             var collection = subcollection[key];
             var freqData = subfreqdata[key];
+            var keyp = _.clone(keypath);
+            keyp.push(key);
             return (
               <div>
                 {
@@ -190,7 +193,7 @@ class ProfileTab extends Tab
                       <b>
                         <label className={styles.keylabel} htmlFor={key + "_id"} onClick = {
                           () => {
-                            this.setState({currFreqData: freqData});
+                            this.setState({currFreqData: freqData, currKey: keyp});
                           }
                         }>
                           {key}
@@ -217,7 +220,7 @@ class ProfileTab extends Tab
                 {
                   Object.keys(collection["children"]).length > 0 ?
                     <div className={styles.subtree}>
-                      { this._renderSubTable(collection["children"], freqData["children"], level + 1) }
+                      { this._renderSubTable(collection["children"], freqData["children"], level + 1, keyp) }
                     </div>
                   : null
                 }
@@ -259,7 +262,7 @@ class ProfileTab extends Tab
       return (
         <div>
           <b>
-            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key selected' : ''}
+            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key \'' + this.state.currKey.join('.') + '\'' : ''}
           </b>
 
           {
