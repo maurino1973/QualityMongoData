@@ -19,23 +19,21 @@ class RangeGroup extends Component {
 
   render() {
     return (
-      <ul>
+      <table>
         {
           this.props.metrics.map((curr, index) => {
             return (
-              <li>
-                <Range
-                  metricName={curr.props.title}
-                  value={this.props.weights[curr.props.engine]}
-                  absValue={this._toAbsoluteWeights(this.props.weights)[curr.props.engine]}
-                  owner={this}
-                  id={curr.props.engine}
-                />
-              </li>
+              <Range
+                metricName={curr.props.title}
+                value={this.props.weights[curr.props.engine]}
+                absValue={this._toAbsoluteWeights(this.props.weights)[curr.props.engine]}
+                owner={this}
+                id={curr.props.engine}
+              />
             );
           })
         }
-      </ul>
+      </table>
     );
   }
 
@@ -80,17 +78,24 @@ class Range extends Component {
 
   render() {
     return (
-      <div style={{"opacity": this.props.value > 0.0 ? 1.0 : 0.4}} className={ classnames(styles.weightBlock) }>
-        <span>{ this.props.metricName }</span>
-        <input className={ classnames(styles.weightRange) }
-              type="range"
-              value={ this.props.value }
-              min="0.0"
-              max="1.0"
-              step="0.01"
-              onChange={this.handleChange.bind(this)}/>
-        <span className={ classnames(styles.weightLabel) }>{ this.props.absValue.toFixed(2) }</span>
-      </div>
+      <tr style={{"opacity": this.props.value > 0.0 ? 1.0 : 0.4}}>
+        <td className={ classnames(styles.weightLabel) }>
+          { this.props.metricName }
+        </td>
+        <td>
+          <input
+            type="range"
+            value={ this.props.value }
+            min="0.0"
+            max="1.0"
+            step="0.01"
+            onChange={this.handleChange.bind(this)}
+          />
+        </td>
+        <td>
+          { this.props.absValue.toFixed(2) }
+        </td>
+      </tr>
     );
   }
 }

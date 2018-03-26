@@ -6,6 +6,87 @@ import {Tab, RangeGroup} from './Tab';
 
 import styles from './TabView.less';
 
+class Donut extends Component {
+  static displayName = 'PluginTabBar';
+
+  constructor(props) {
+    super(props);
+  }
+
+  _getOffset(score) {
+    console.assert(score >= 0.0 && score <= 1.0);
+    //0.50*full = 180° = 1.0 score
+    //0.75*full =  90° = 0.5 score
+    //1.00*full =   0° = 0.0 score
+    const full = 440;   //NOTE: HARDCODED value refer to css .donut stroke-dasharray: 440
+
+    return full - (full*0.5)*score;
+  }
+
+  // Shamelessly copy and pasted from the stackoverflow
+  // https://stackoverflow.com/questions/17242144/javascript-convert-hsb-hsv-color-to-rgb-accurately
+  _HSVtoRGB(h, s, v) {
+    var r, g, b;
+    var i, f, p, q, t;
+
+    i = Math.floor(h * 6);
+    f = h * 6 - i;
+    p = v * (1 - s);
+    q = v * (1 - f * s);
+    t = v * (1 - (1 - f) * s);
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+    return {
+        r: Math.round(r * 255),
+        g: Math.round(g * 255),
+        b: Math.round(b * 255)
+    };
+  }
+
+  _score2RGB(score) {
+    console.assert(score >= 0.0 && score <= 1.0);
+    return this._HSVtoRGB(0.3 * score, 0.9, 1.0)
+  }
+
+  render() {
+    const color = this._score2RGB(this.props.score);
+    return (
+      <div className={classnames(styles.donutContainer)}>
+        <span style={{"line-height": "90px"}}>
+          { (this.props.score * 100).toFixed(0) + "%"}
+        </span>
+        <span>
+          {this.props.name}
+        </span>
+
+        <svg width="165" height="165" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <title>Layer 1</title>
+            <circle
+              style={{"stroke-dashoffset": 220}}
+              className={classnames(styles.donut2)}
+              r="70" cy="81" cx="81"
+            />
+            <circle
+              style={{"stroke-dashoffset": this._getOffset(this.props.score),
+                      "stroke": "rgb(" + color.r + "," + color.g + "," + color.b + ")"
+              }}
+              className={classnames(styles.donut)}
+              r="70" cy="81" cx="81"
+            />
+          </g>
+        </svg>
+      </div>
+    );
+  }
+}
+
 class DashBoard extends Tab {
   static displayName = 'DashBoard';
   static propTypes = {
@@ -19,17 +100,26 @@ class DashBoard extends Tab {
   renderContent() {
     return (
       <div>
-        <div className={ classnames(styles.dashboardScore) }>
-          Quality score: { this.props.store.collectionScore.toFixed(1) }
-        </div>
+        <p className={ classnames(styles.dashboardScore) }>
+          Quality score: { this.props.store.collectionScore.toFixed(1) + "%"}
+        </p>
         <p>Change weights for the metrics:</p>
-        {
-          <RangeGroup
-            metrics={this.props.metrics}
-            store={this.props.store}
-            weights={this.props.store.weights}
-          />
-        }
+
+        <RangeGroup
+          metrics={this.props.metrics}
+          store={this.props.store}
+          weights={this.props.store.weights}
+        />
+
+        <div className={ classnames(styles.donutsblock) }>
+          {
+            this.props.metrics.map((item) => {
+              return (
+                <Donut name={item.props["title"]} score={item.props["score"]}/>
+              );
+            })
+          }
+        </div>
       </div>
     );
   }
@@ -48,6 +138,7 @@ class ProfileTab extends Tab
 
     this.setState({
       currFreqData: {},
+      currKey: ""
     });
   }
 
@@ -64,7 +155,7 @@ class ProfileTab extends Tab
 
   _renderTable() {
     return (
-      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0)
+      this._renderSubTable(this.props.store.collectionsValues, this.props.store.collectionValuesByKey, 0, [])
     );
   }
 
@@ -87,6 +178,8 @@ class ProfileTab extends Tab
           Object.keys(subcollection).map((key, index) => {
             var collection = subcollection[key];
             var freqData = subfreqdata[key];
+            var keyp = _.clone(keypath);
+            keyp.push(key);
             return (
               <div>
                 {
@@ -100,7 +193,7 @@ class ProfileTab extends Tab
                       <b>
                         <label className={styles.keylabel} htmlFor={key + "_id"} onClick = {
                           () => {
-                            this.setState({currFreqData: freqData});
+                            this.setState({currFreqData: freqData, currKey: keyp});
                           }
                         }>
                           {key}
@@ -127,7 +220,7 @@ class ProfileTab extends Tab
                 {
                   Object.keys(collection["children"]).length > 0 ?
                     <div className={styles.subtree}>
-                      { this._renderSubTable(collection["children"], freqData["children"], level + 1) }
+                      { this._renderSubTable(collection["children"], freqData["children"], level + 1, keyp) }
                     </div>
                   : null
                 }
@@ -152,30 +245,45 @@ class ProfileTab extends Tab
         return b[1]["count"] - a[1]["count"];
       });
 
+      // Normalize frequencies
+      var maxFreq = 0;
+      for (var i in pairs) {
+        if (pairs[i][1].count > maxFreq) {
+          maxFreq = pairs[i][1].count;
+        }
+      }
+      console.assert(maxFreq != 0.0);
+      pairs = pairs.map((item) => {
+        return (
+          [item[0], item[1], item[1].count / maxFreq]
+        );
+      });
+
       return (
         <div>
           <b>
-            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key selected' : ''}
+            {Object.keys(this.state.currFreqData).length > 0 ? 'Below are listed all values for the key \'' + this.state.currKey.join('.') + '\'' : ''}
           </b>
 
           {
-            //Object.keys(this.state.currFreqData["values"]).map((key, index) => {
             pairs.map((item) => {
-              var currentValue = item//this.state.currFreqData["values"][key];
+              // item[0] is value
+              // item[1] is {count, type}
+              // item[2] is relative frequency
               return (
                 <div style={ {display: "flex"} }>
-                  <div style={{width: currentValue[1].count + 'em'}} className={ classnames(styles.barrect) }></div>
+                  <div style={{width: Math.max(20*item[2], 0.1) + 'em'}} className={ classnames(styles.barrect) }></div>
                   <div>
                     {
                       (() => {
                         const elisionThreshold = 64;
-                        if (currentValue[0].length > elisionThreshold) { // elision for visual appearance
-                          return currentValue[0].slice(0, elisionThreshold).toString() + "...";
+                        if (item[0].length > elisionThreshold) { // elision for visual appearance
+                          return item[0].slice(0, elisionThreshold).toString() + "...";
                         }
 
-                        return currentValue[0];
+                        return item[0];
                       })()
-                    } has appeared {currentValue[1].count} times of type {currentValue[1].type}
+                    } has appeared {item[1].count} times of type {item[1].type}
                   </div>
                 </div>
               );

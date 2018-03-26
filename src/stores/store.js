@@ -233,6 +233,7 @@ class CompletenessMetricEngine extends MetricEngine
        skip: this.skip,
        limit: this.limit
      };
+
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
        var data = this._calculateMetaData(docs);
         this.setState({_docs : docs});
@@ -315,12 +316,14 @@ class CompletenessMetricEngine extends MetricEngine
        if (metadata[key]["type"].indexOf(type) <= -1) { // No type in metadata
          if (type == "null") {
            metadata[key]["cwa"] = true;
-         } else {
-           metadata[key]["multiple"] = true;
          }
 
          metadata[key]["type"].push(type);
          metadata[key]["type"] = metadata[key]["type"].sort();
+
+         if (metadata[key]["type"].length > 1) {
+           metadata[key]["multiple"] = true;
+         }
        }
 
        if (type == "object" && key != "_id") {    // Ignore private fields
@@ -373,17 +376,15 @@ class CompletenessMetricEngine extends MetricEngine
      return metadata;
    },
 
-   //TODO: Change function name
    _calculateMetaData(docs) {
      var metadata = {};
      var frequencies = {};
      for (var i = 0; i < docs.length; ++i) {
        metadata = this._getDocumentMetadata(docs[i], metadata);
+       console.log(metadata);
        frequencies = this._getDocumentFreqs(docs[i], frequencies);
      }
 
-     console.log("Freqs", frequencies);
-     //NOTE: Is it better to compute relative frequencies???
      return [this._computePercentage(metadata, docs.length), frequencies];
    },
 
