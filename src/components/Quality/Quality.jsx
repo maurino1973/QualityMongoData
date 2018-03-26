@@ -43,12 +43,16 @@ class Quality extends Component {
 
   /**query request*/
 
+  componentWillMount() {
+    this.queryBar = window.app.appRegistry.getComponent('Query.QueryBar');
+  }
+
   getSubsetByQueryImpl(event){
-    this.props.actions.queryRequestFunct(document.getElementById("userRequestedQuery").value);
+    this.props.actions.queryRequestFunct();
   }
 
   getQueryValuesByKeyImpl(event){
-    this.props.actions.showQueryKeyValues(event.target.innerHTML,event.target.parentNode.parentNode.parentNode.getElementsByClassName("type-collection")[0].getElementsByTagName("i")[0].innerHTML,event.target.parentNode.parentNode.parentNode, document.getElementById("requestedQueryHidden").value);
+    this.props.actions.showQueryKeyValues(event.target.innerHTML,event.target.parentNode.parentNode.parentNode.getElementsByClassName("type-collection")[0].getElementsByTagName("i")[0].innerHTML,event.target.parentNode.parentNode.parentNode);
   }
 
   /**reset*/
@@ -66,7 +70,6 @@ class Quality extends Component {
     return (
       <div className={classnames(styles.root)}>
         <h2 className={classnames(styles.title)}>Quality Assement and Profile</h2>
-        <h2>{this.props.queryToAnaliyze}</h2>
         <div className="plugin-description-text"><b>The scope of this plugin is to measure data quality of your MongoDB data.<p/>
         Below will be shown a JSON object retrieved from this collection, which has every key for every documents. <p/>
         You can find JSON values for a key simply by clicking it.<p/>
@@ -78,11 +81,7 @@ class Quality extends Component {
         {<input type="hidden" id="nRandomHidden" value={this.props.numRequested}/>}
         ----------------------------------------------------------------------
         <p/>Here you could insert a query and analyze the quality on the result.<p/>
-        <text>find(&#123;</text>
-        <input type="text" id="userRequestedQuery"/>
-        <text>&#125;)&nbsp;&nbsp;</text>
-        <a href="#" onClick={this.getSubsetByQuery}>Let's analyze</a><p/>
-        {<input type="hidden" id="requestedQueryHidden" value={this.props.queryToAnaliyze}/>}
+        <this.queryBar buttonLabel="Analyze" onApply={this.getSubsetByQuery} onReset={this.resetSubset}/>
         ----------------------------------------------------------------------
         <p/><a href="#" onClick={this.resetSubset}>Reset</a><p/>
         ----------------------------------------------------------------------
