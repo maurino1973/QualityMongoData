@@ -119,7 +119,6 @@ getInitialState() {
 
     //for the "query" request
     queryRequest : false,
-    queryToAnaliyze : "aaa",
     querySubCollection : []
 	};
 },
