@@ -1,10 +1,10 @@
 import Reflux from 'reflux';
 import StateMixin from 'reflux-state-mixin';
 import QualityActions from 'actions';
+import toNS from 'mongodb-ns';
 
 
 const debug = require('debug')('mongodb-compass:stores:quality');
-
 
 /**
  * Performance Plugin store.
@@ -89,6 +89,7 @@ onActivated(appRegistry) {
 	// Events emitted from the app registry:
 	appRegistry.on('collection-changed', this.onCollectionChanged.bind(this));
 	appRegistry.on('database-changed', this.onDatabaseChanged.bind(this));
+  appRegistry.on('query-changed', this.onQueryChanged.bind(this));
 	appRegistry.on('data-service-connected', (error, dataService) => {
   	//   // dataService is connected or errored.
   	//   // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
@@ -118,7 +119,7 @@ getInitialState() {
 
     //for the "query" request
     queryRequest : false,
-    queryToAnaliyze : "",
+    queryToAnaliyze : "aaa",
     querySubCollection : []
 	};
 },
@@ -132,6 +133,7 @@ toggleStatus() {
 	});
 },
 
+//to do map-reduce
 analyzeNotObject(dataReturnedFind, el, type){
  var collectionToSet = [];
  for(var i =0 ; i<dataReturnedFind.length ; i++){
@@ -157,6 +159,7 @@ analyzeNotObject(dataReturnedFind, el, type){
  return collectionToSet;
 },
 
+//to do map-reduce
 analyzeObject(dataReturnedFind, el, rowElement){
  var collectionToSet = [];
  var objLength = dataReturnedFind.length;
@@ -357,59 +360,7 @@ showRandKeyValues(el,type,rowElement,num){
  });
 },
 
-createSubsetByQuery(query, dataReturnedFind){
-
-  var tmpValues = [];
-  var obj = dataReturnedFind;
-  var filters = query.split(',');
-
-  if(query.indexOf("{") > -1){
-    //there is at least 1 filter
-
-  }else{
-
-    for(var i=0; i<obj.length; i++){
-      var keys = Object.keys(obj[i]);
-      var okToInsert = true;
-      for(var x = 0; x<filters.length; x++){
-        var filterFounded = false;
-        var subFilter = filters[x].split(':');
-
-        for (var c = 0; c < subFilter.length; c++) {
-          if(!subFilter[c].substring(0,1).trim()){
-            //there is a white space, remove it
-            subFilter[c] = subFilter[c].substring(1,subFilter[c].length);
-          }
-          if(!subFilter[c].substring(subFilter[c].length-1,subFilter[c].length).trim()){
-            //there is a white space, remove it
-            subFilter[c] = subFilter[c].substring(0,subFilter[c].length-1);
-          }
-          if(subFilter[c].charAt(0) == '"'){
-            subFilter[c] = subFilter[c].substring(1,subFilter[c].length);
-          }
-          if(subFilter[c].charAt(subFilter[c].length-1) == '"'){
-            subFilter[c] = subFilter[c].substring(0,subFilter[c].length-1);
-          }
-        }
-
-        for (var c = 0; c < keys.length; c++) {
-          if(keys[c] == subFilter[0] && obj[i][keys[c]] == subFilter[1]){
-            filterFounded = true;
-          }
-        }
-
-        if(!filterFounded){
-          okToInsert = false;
-        }
-      }
-      if(okToInsert)
-        tmpValues.push(obj[i]);
-    }
-  }
-  return tmpValues;
-},
-
-queryRequestFunct(query){
+queryRequestFunct(){
 
   var barElements = document.getElementsByClassName('bar');
   for(var i=0;i<barElements.length;i++){
@@ -417,60 +368,54 @@ queryRequestFunct(query){
   }
   document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
 
-  if (!query.trim()) {
-    this.setState({queryRequest : false});
-    return;
-    }
+  const findOptions = {
+         sort: this.sort,
+         fields: this.project,
+         skip: this.skip,
+         limit: this.limit
+       };
 
-    this.setState({queryToAnaliyze : "fuori"});
+  var entireCollection = [];
 
-    const Connection = require('mongodb-connection-model');
-  const DataService = require('mongodb-data-service');
+  this.dataService.find(this.namespace, {}, {}, (errors,entireColl) => {
 
-  var service = new DataService(new Connection({
-    hostname: '127.0.0.1',
-    port: 27018,
-    ns: 'data-service'
-  }));
+      this.dataService.find(this.namespace, this.filter, findOptions, (errors,filteredColl) => {
 
+        var tmpMetaData = this.createMetaData(entireColl, filteredColl);
 
-  service.find(this.namespace, query, {}, (errors,dataReturnedFind) => {
-
-    // var subColl = this.createSubsetByQuery(query, dataReturnedFind);
-    var tmpMetaData = this.createMetaData(dataReturnedFind, subColl);
-
-    this.setState({queryRequest : true});
-    this.setState({queryToAnaliyze : "dentro"});
-    this.setState({querySubCollection : tmpMetaData});
-  });
-
+        this.setState({queryRequest : true});
+        this.setState({querySubCollection : tmpMetaData});
+      });
+    });
 },
 
-showQueryKeyValues(el,type,rowElement,query){
+showQueryKeyValues(el,type,rowElement){
 
   var barElements = document.getElementsByClassName('bar');
   for(var i=0;i<barElements.length;i++){
     barElements[i].style.display = "none";
   }
 
-  var tmpValues = [];
+  const findOptions = {
+         sort: this.sort,
+         fields: this.project,
+         skip: this.skip,
+         limit: this.limit
+       };
 
-  this.dataService.find(this.namespace, {}, {}, (errors,dataReturnedFind) => {
-
-    tmpValues = this.createSubsetByQuery(query, dataReturnedFind);
+  this.dataService.find(this.namespace, this.filter, findOptions, (errors,dataReturnedFind) => {
 
     if(type!="object"){
       document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
 
       var coll = [];
-      coll = this.analyzeNotObject(tmpValues, el, type);
+      coll = this.analyzeNotObject(dataReturnedFind, el, type);
 
       for(var i=0;i<barElements.length;i++){
        barElements[i].style.display = "block";
       }
 
       this.setState({queryRequest : true});
-      this.setState({queryToAnaliyze : query});
       this.setState({collectionValuesByKey : coll});
     }
     else{
@@ -479,10 +424,9 @@ showQueryKeyValues(el,type,rowElement,query){
         document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
         return;
       }
-      this.analyzeObject(tmpValues, el, rowElement);
+      this.analyzeObject(dataReturnedFind, el, rowElement);
 
       this.setState({queryRequest : true});
-      this.setState({queryToAnaliyze : query});
       this.setState({collectionValuesByKey : []});
     }
 
@@ -490,11 +434,11 @@ showQueryKeyValues(el,type,rowElement,query){
 },
 
 resetCollection(){
-   this.setState({randomRequest : false});
-   this.setState({queryRequest : false});
-   this.setState({collectionValuesByKey : []});
+   document.querySelectorAll('.appendedObject').forEach(function(a){a.remove()});
+   this.setState(this.getInitialState());
  },
 
+//to do map-reduce
 calculateMetaData(dataReturnedFind){
  	var obj = dataReturnedFind;
  	var keys = [];
@@ -563,6 +507,17 @@ onCollectionChanged(namespace) {
 	});
 },
 
+onQueryChanged(state) {
+     if (state.ns && toNS(state.ns).collection) {
+       this.filter  = state.filter;
+       this.project = state.project;
+       this.sort    = state.sort;
+       this.skip    = state.skip;
+       this.limit   = state.limit;
+       this.namespace = state.ns;
+     }
+},
+
 //UTILS Javascript functions
 
 keyExists(key, search) {
@@ -577,9 +532,9 @@ keyExists(key, search) {
 	return key in search;
 },
 
-keyExistsInMetadata(key, type, metaData){
+keyExistsInMetadata(key, metaData){
 	for(var i =0 ; i<metaData.length ; i++){
-		if(metaData[i]["key"] == key)// && metaData[i]["type"] == type)
+		if(metaData[i]["key"] == key)
 			return{"position" : i, "found" : true}
 	}
 	return {"position": -1, "found" : false};
