@@ -316,12 +316,14 @@ class CompletenessMetricEngine extends MetricEngine
        if (metadata[key]["type"].indexOf(type) <= -1) { // No type in metadata
          if (type == "null") {
            metadata[key]["cwa"] = true;
-         } else {
-           metadata[key]["multiple"] = true;
          }
 
          metadata[key]["type"].push(type);
          metadata[key]["type"] = metadata[key]["type"].sort();
+
+         if (metadata[key]["type"].length > 1) {
+           metadata[key]["multiple"] = true;
+         }
        }
 
        if (type == "object" && key != "_id") {    // Ignore private fields
@@ -379,6 +381,7 @@ class CompletenessMetricEngine extends MetricEngine
      var frequencies = {};
      for (var i = 0; i < docs.length; ++i) {
        metadata = this._getDocumentMetadata(docs[i], metadata);
+       console.log(metadata);
        frequencies = this._getDocumentFreqs(docs[i], frequencies);
      }
 
