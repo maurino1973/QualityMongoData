@@ -142,14 +142,13 @@ class Quality extends Component {
 
          <figure><figcaption>{this.props.collectionValuesByKey.length > 0 ? 'Below are listed all values for the key selected' : ''}</figcaption><svg className="chart" width="100%" height="10000" aria-labelledby="title" role="img">
            <title id="title">A bart chart showing information</title>
-
              {
                this.props.collectionValuesByKey.map((currentValue,index) =>
                  {
                  return(
                    <g className="bar">
-                     <rect width={currentValue.count * 10} height="19" y={index == 0 ? 0 : (20 * index)}></rect>
-                     <text x={currentValue.count * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em"> " {currentValue.key} " has appeared {currentValue.count} times of type {currentValue.type}</text>
+                     <rect width={currentValue.value * 10} height="19" y={index == 0 ? 0 : (20 * index)}></rect>
+                     <text x={currentValue.value * 10} y={index == 0 ? 9.5 : (8 + 20 * index)} dy=".35em"> " {currentValue._id.toString()} " has appeared {currentValue.value.toString()} times</text>
                    </g>
                    );
                  })
