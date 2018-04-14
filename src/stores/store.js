@@ -7,12 +7,24 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
 class MetricEngine
 {
+  constructor() {
+    this.state = {
+      options: {}
+    };
+
+    this.getOptions = this.getOptions.bind(this);
+    this.compute = this.compute.bind(this);
+  }
   /**
    * This method compute your metric using information from documents
    * The method must return a number >= 0.0 and <= 1.0
    */
   compute(docs, props) {
     // Override me
+  }
+
+  getOptions() {
+    return this.state.options;
   }
 }
 
@@ -51,6 +63,21 @@ class CompletenessMetricEngine extends MetricEngine
     }
     score /= Object.keys(occurrences).length;
     return score;
+  }
+}
+
+class TestMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+
+    this.state.options = "hello";
+  }
+
+  compute(docs, props) {
+    this.state.options = props;
+    console.log("Compute", this.state.options);
+    return 1.0;
   }
 }
 
@@ -158,7 +185,8 @@ class CompletenessMetricEngine extends MetricEngine
 	 */
 	 getInitialState() {
      var metricEngines = {
-       "CompletenessMetric": new CompletenessMetricEngine()
+       "CompletenessMetric": new CompletenessMetricEngine(),
+       "TestMetric": new TestMetricEngine()
      };
 
      var metrics = {};

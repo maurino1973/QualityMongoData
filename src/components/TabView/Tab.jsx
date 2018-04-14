@@ -146,6 +146,10 @@ class MetricTab extends Tab
 
   constructor(props) {
     super(props);
+
+    this.state = {
+      options: this.props.options
+    };
   }
 
   renderContent() {
@@ -163,8 +167,7 @@ class MetricTab extends Tab
   }
 
   _compute() {
-    console.log("click", this.props.title);
-    this.props.compute({});
+    this.props.compute(this.state.options);
   }
 }
 

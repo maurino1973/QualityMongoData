@@ -29,6 +29,33 @@ class CompletenessMetricTab extends MetricTab {
   }
 }
 
+class TestMetricTab extends MetricTab {
+  static displayName = 'TestMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    this.change = this.change.bind(this);
+  }
+
+  change() {
+    if (this.state.options == "hello") {
+      this.setState({options: "world"});
+    } else {
+      this.setState({options: "hello"});
+    }
+  }
+
+  renderContent() {
+    return (
+      <div>
+        { this.state.options }
+        <input type="button" onClick={this.change} value="change"/>
+      </div>
+    );
+  }
+}
+
 class Quality extends Component {
   static displayName = 'QualityComponent';
   static propTypes = {
@@ -47,6 +74,8 @@ class Quality extends Component {
 
     /**reset*/
     this.resetSubset = this.resetSubsetImpl.bind(this);
+
+    this._makeMetricComponents = this._makeMetricComponents.bind(this);
 
     this.state = {
       validSampleSize: true
@@ -121,17 +150,24 @@ class Quality extends Component {
     //NOTE: Format is <EngineName>: [<ComponentTab>, <TabName>]
     //TODO: Place this in ctor
     var metricCompMap = {
-      "CompletenessMetric": [CompletenessMetricTab, "Completeness"]
+      "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
+      "TestMetric": [TestMetricTab, "Test"]
     };
 
     for (const key in engines) {
       if (key in metricCompMap) {
         const CustomMetric = metricCompMap[key][0];
-        const title = metricCompMap[key][1]
-        metricComp.push(<CustomMetric title={ title } engine={key} score={engines[key]} compute={
-          (props) =>
-            this.props.actions.computeMetric(key, props)
-          }/>);
+        const title = metricCompMap[key][1];
+        var options = this.props._metricEngine[key].getOptions();
+        metricComp.push(
+          <CustomMetric title={ title }
+                        engine={key}
+                        score={engines[key]}
+                        options={options}
+                        compute={(props) =>
+                          this.props.actions.computeMetric(key, props)
+                        }/>
+        );
       } else {
         console.assert("Engine ", key, " not supported");
       }
