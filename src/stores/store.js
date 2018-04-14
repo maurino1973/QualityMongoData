@@ -5,28 +5,26 @@ import toNS from 'mongodb-ns';
 
 const debug = require('debug')('mongodb-compass:stores:quality');
 
-
 class MetricEngine
 {
+  constructor() {
+    this.state = {
+      options: {}
+    };
+
+    this.getOptions = this.getOptions.bind(this);
+    this.compute = this.compute.bind(this);
+  }
   /**
    * This method compute your metric using information from documents
    * The method must return a number >= 0.0 and <= 1.0
    */
-  compute(docs) {
+  compute(docs, props) {
     // Override me
   }
-}
 
-class TestMetricEngine extends MetricEngine
-{
-  constructor() {
-    super();
-    this.score = Math.min(Math.random() + 0.01, 1.0);
-  }
-
-  compute(docs) {
-    console.log("Test metric docs:", docs);
-    return this.score;
+  getOptions() {
+    return this.state.options;
   }
 }
 
@@ -36,7 +34,7 @@ class CompletenessMetricEngine extends MetricEngine
     super();
   }
 
-  compute(docs) {
+  compute(docs, props) {
     if (docs.length == 0) {
       return 0.0;
     }
@@ -65,6 +63,21 @@ class CompletenessMetricEngine extends MetricEngine
     }
     score /= Object.keys(occurrences).length;
     return score;
+  }
+}
+
+class TestMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+
+    this.state.options = "hello";
+  }
+
+  compute(docs, props) {
+    this.state.options = props;
+    console.log("Compute", this.state.options);
+    return 1.0;
   }
 }
 
@@ -173,8 +186,7 @@ class CompletenessMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
-       "TestMetric1": new TestMetricEngine(),
-       "TestMetric2": new TestMetricEngine()
+       "TestMetric": new TestMetricEngine()
      };
 
      var metrics = {};
@@ -196,7 +208,8 @@ class CompletenessMetricEngine extends MetricEngine
        _metricEngine: metricEngines,
        metrics: metrics,
        weights: weights,
-       _docs: []
+       freqs: [],
+       _docs: [],
      };
    },
 
@@ -220,10 +233,21 @@ class CompletenessMetricEngine extends MetricEngine
 	 	});
 	 },
 
+   resetCollection() {
+     this.setState(this.getInitialState());
+     this.dataService.find(this.namespace, {}, {}, (errors, docs) => {
+       this._calculateMetaData(docs, false, (data) => {
+         console.log("Reset");
+         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+         this.setState({_docs : docs});
+       });
+     });
+   },
+
    /*
     * Called when a query or a sampling is made
     */
-   profile() {
+   queryRequestFunct() {
      //this.onCollectionChanged(this.namespace);
      //TODO: Change position, see onCollectionChanged TODO
      this.setState(this.getInitialState());
@@ -235,12 +259,43 @@ class CompletenessMetricEngine extends MetricEngine
      };
 
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
-       var data = this._calculateMetaData(docs);
-        this.setState({_docs : docs});
-        this.setState({collectionsValues: data[0],
-                       collectionValuesByKey: data[1]});
+       this._calculateMetaData(docs, true, (data) => {
+         console.log("onQueryRequestFunct");
+         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+         this.setState({_docs : docs});
+       });
      });
    },
+
+   randomRequestFunct(num){
+     var number = parseInt(num);
+
+     //if the number inserted is less than zero or isn't a number or is bigger than the length of the collection
+     //analyze all the collection
+
+     if(!(isNaN(number) || number<=0)){
+       this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
+         var tmpMetaData = [];
+         if(number >= dataReturnedFind.length){
+           return;
+         }
+
+         var tmpValues = [];
+
+         var factor = parseInt(dataReturnedFind.length / number);
+
+         for(var i=0, c=0; c < number; i = i + factor, c++){
+           tmpValues.push(dataReturnedFind[i]);
+         }
+
+         this._calculateMetaData(tmpValues, false, (data) => {
+           console.log("randomRequestFunct");
+           this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+           this.setState({_docs : tmpValues});
+         });
+       });
+     }
+  },
 
    /*
     * Compute the metric using specific options
@@ -298,7 +353,8 @@ class CompletenessMetricEngine extends MetricEngine
      this.setState({collectionScore: 100 * cScore});
    },
 
-   _getDocumentMetadata(doc, metadata) {
+   _getDocumentMetadata(doc, metadata, pkMap) {
+
      for (var key in doc) {
        if (!(key in metadata)) {
          metadata[key] = {
@@ -309,7 +365,14 @@ class CompletenessMetricEngine extends MetricEngine
            "cwa": false,
            "children": {}
          };
-       }
+
+         pkMap.set(key, [doc[key]]);
+
+       }else{
+         try{
+          pkMap.get(key).push(doc[key]);
+         }catch(err){}
+      }
 
        var type = this.getCurrentType(doc[key]);
 
@@ -327,12 +390,122 @@ class CompletenessMetricEngine extends MetricEngine
        }
 
        if (type == "object" && key != "_id") {    // Ignore private fields
-         metadata[key]["children"] = this._getDocumentMetadata(doc[key], metadata[key]["children"]);
+         metadata[key]["children"] = this._getDocumentMetadata(doc[key], metadata[key]["children"], new Map())[0];
        }
        metadata[key]["count"]++;
      }
 
-     return metadata;
+     return [metadata, pkMap];
+   },
+
+   _getDocumentFreqsMapReduce(path, callback) {
+     var dbNs = this.namespace.split('.');
+     var collection = this.dataService.client.client.db(dbNs[0].toString(), {}).collection(dbNs[1].toString(), {});
+
+     var fullpath = path;
+     if (fullpath != "") {
+       fullpath = "." + fullpath;
+     }
+
+     var map =
+       `
+       if (typeof this` + fullpath + ` === "object") {
+         for (var key in this` + fullpath + `) {
+           emit(key, null);
+         }
+       }`;
+     var mapFn = new Function("", map);
+
+     var reduce = function(k, vals) {
+       return null;
+     }
+
+     var options = {
+       out: {inline: 1},
+       query: this.filter
+     };
+
+     var keyCallback = (err, result) => {
+       var keys = [];
+
+       for (var i=0; i < result.length; ++i) {
+         keys.push(result[i]["_id"]);
+       }
+
+       var x = 0;
+       var freqs = {};
+       var getFreq = (x) => {
+         var key = keys[x];
+
+         var fullpath = path;
+         if (fullpath == "") {
+           fullpath = key;
+         } else {
+           fullpath = path + "." + key;
+         }
+
+         var map = "try{this." + fullpath + ";}catch(e){return;} if(this." + fullpath + "!=null){emit(this." + fullpath +", 1);}";
+         var mapFn = new Function("", map);
+
+         var reduce = function(k, vals) {
+           return Array.sum(vals);
+         }
+
+         var options = {
+           out: {inline: 1},
+           query: this.filter
+         };
+
+         var freqCallback = (err, result) => {
+           //BUG: MapReduce return 34 != "34" which is different from what we do
+           //     now, but since getCurrentType() works differently (check comment in the function)
+           //     if documents contains 34 and "34", the string is ignored and is not
+           //     inserted into the frequency table.
+
+           if (result.length != 0) {
+             freqs[key] = {
+               "values": {},  //<val> : {"count": 0, "type": null }
+               "children": {}
+             };
+
+             for (var j = 0; j < result.length; ++j) {
+               var type = this.getCurrentType(result[j]["_id"]);
+               freqs[key]["values"][result[j]["_id"]] = {"count": result[j]["value"], "type": type };
+
+               if (type == "object" && key != "_id") {    // Ignore private fields
+                 this._getDocumentFreqsMapReduce(fullpath, (result) => {
+                   freqs[key]["children"] = result;
+                 });
+               }
+             }
+           }
+
+           if (x < keys.length) {
+             getFreq(x + 1);
+           } else {
+             callback(freqs);
+           }
+         }
+
+         collection.mapReduce (
+           mapFn, //map
+           reduce, //reduce
+           options, //options
+           freqCallback
+         );
+       }
+
+       if (x < keys.length) {
+         getFreq(x);
+       }
+     }
+
+     collection.mapReduce (
+       map, //map
+       reduce, //reduce
+       options, //options
+       keyCallback
+     );
    },
 
    _getDocumentFreqs(doc, freqs) {
@@ -376,16 +549,63 @@ class CompletenessMetricEngine extends MetricEngine
      return metadata;
    },
 
-   _calculateMetaData(docs) {
-     var metadata = {};
-     var frequencies = {};
-     for (var i = 0; i < docs.length; ++i) {
-       metadata = this._getDocumentMetadata(docs[i], metadata);
-       console.log(metadata);
-       frequencies = this._getDocumentFreqs(docs[i], frequencies);
+   _computeCandidatePk(metadata, map, numDocs){
+
+     for(var key in metadata){
+
+       metadata[key]["cpk"] = false;
+
+        if(metadata[key]["count"] === numDocs){
+
+          var el = map.get(key).sort();
+
+          var candidate = true;
+          var x = 0;
+
+          if(!el[0])
+            candidate = false;
+
+          while(candidate && x<el.length-1){
+            if(_.isEqual(el[x], el[x+1]) || !(el[x+1]))
+              candidate = false;
+            x++;
+          }
+
+          if(candidate)
+            metadata[key]["cpk"] = true;
+
+        }
+
      }
 
-     return [this._computePercentage(metadata, docs.length), frequencies];
+     return metadata;
+  },
+
+   _calculateMetaData(docs, useMapReduce, callback) {
+     var metadata = {};
+     var pkMap = new Map();
+
+     for (var i = 0; i < docs.length; ++i) {
+       var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
+       metadata = data[0];
+       pkMap = data[1];
+     }
+
+     metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
+
+     // TODO: Refactor this
+     if (useMapReduce) {
+       this._getDocumentFreqsMapReduce("", (result) => {
+         callback([this._computePercentage(metadata, docs.length), result]);
+       });
+     } else {
+       var frequencies = {};
+       for (var i = 0; i < docs.length; ++i) {
+         frequencies = this._getDocumentFreqs(docs[i], frequencies);
+       }
+
+       callback([this._computePercentage(metadata, docs.length), frequencies]);
+     }
    },
 
    /*
@@ -401,13 +621,16 @@ class CompletenessMetricEngine extends MetricEngine
      console.log("Collection Changed");
      this.setState(this.getInitialState());
      this.namespace = namespace;
-     this.dataService.find(namespace, {}, {}, (errors,dataReturnedFind) => {
-       var data = this._calculateMetaData(dataReturnedFind);
-       this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-       this.setState({_docs : dataReturnedFind});  // TODO: Temporary??
+     this.dataService.find(namespace, {}, {}, (errors, docs) => {
+
+       this._calculateMetaData(docs, false, (data) => {
+         console.log("onCollectionChanged");
+         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+         this.setState({_docs : docs});
+       });
+
      });
    },
-
 
    //UTILS Javascript functions
    getCurrentType (value) {

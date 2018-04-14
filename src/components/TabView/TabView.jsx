@@ -178,6 +178,7 @@ class ProfileTab extends Tab
           Object.keys(subcollection).map((key, index) => {
             var collection = subcollection[key];
             var freqData = subfreqdata[key];
+
             var keyp = _.clone(keypath);
             keyp.push(key);
             return (
@@ -215,10 +216,13 @@ class ProfileTab extends Tab
                     <div className="col-md-1">
                       <span className="cwa-collection">{collection.cwa ? "\u2714": "\u2718"}</span>
                     </div>
+                    <div className="col-md-1">
+                      <span className="cpk-collection">{collection.cpk ? "\u2714": "\u2718"}</span>
+                    </div>
                   </div>
                 </div>
                 {
-                  Object.keys(collection["children"]).length > 0 ?
+                  Object.keys(collection["children"]).length > 0 && Object.keys(freqData["children"]).length > 0 ?
                     <div className={styles.subtree}>
                       { this._renderSubTable(collection["children"], freqData["children"], level + 1, keyp) }
                     </div>

@@ -5,9 +5,17 @@ const QualityActions = Reflux.createActions([
    * define your actions as strings below, for example:
    */
   'toggleStatus',
-  'profile',
+  //'showKeyValues',
+  'randomRequestFunct', //sampling
+  //'showRandKeyValues',
+
+  'queryRequestFunct',  //find
+
+  //'showQueryKeyValues',
+  'resetCollection',
+  //'profile',
   'computeMetric',
-  'changeWeights',
+  'changeWeights'
 ]);
 
 export default QualityActions;
