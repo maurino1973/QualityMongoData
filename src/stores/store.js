@@ -7,12 +7,24 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
 class MetricEngine
 {
+  constructor() {
+    this.state = {
+      options: {}
+    };
+
+    this.getOptions = this.getOptions.bind(this);
+    this.compute = this.compute.bind(this);
+  }
   /**
    * This method compute your metric using information from documents
    * The method must return a number >= 0.0 and <= 1.0
    */
   compute(docs, props) {
     // Override me
+  }
+
+  getOptions() {
+    return this.state.options;
   }
 }
 
@@ -51,6 +63,21 @@ class CompletenessMetricEngine extends MetricEngine
     }
     score /= Object.keys(occurrences).length;
     return score;
+  }
+}
+
+class TestMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+
+    this.state.options = "hello";
+  }
+
+  compute(docs, props) {
+    this.state.options = props;
+    console.log("Compute", this.state.options);
+    return 1.0;
   }
 }
 
@@ -158,7 +185,8 @@ class CompletenessMetricEngine extends MetricEngine
 	 */
 	 getInitialState() {
      var metricEngines = {
-       "CompletenessMetric": new CompletenessMetricEngine()
+       "CompletenessMetric": new CompletenessMetricEngine(),
+       "TestMetric": new TestMetricEngine()
      };
 
      var metrics = {};
@@ -554,30 +582,57 @@ class CompletenessMetricEngine extends MetricEngine
   },
 
    _calculateMetaData(docs, useMapReduce, callback) {
-     var metadata = {};
-     var pkMap = new Map();
 
-     for (var i = 0; i < docs.length; ++i) {
-       var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
-       metadata = data[0];
-       pkMap = data[1];
-     }
+     this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
-     metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
+        var metadata = {};
+        var pkMap = new Map();
 
-     // TODO: Refactor this
-     if (useMapReduce) {
-       this._getDocumentFreqsMapReduce("", (result) => {
-         callback([this._computePercentage(metadata, docs.length), result]);
-       });
-     } else {
-       var frequencies = {};
-       for (var i = 0; i < docs.length; ++i) {
-         frequencies = this._getDocumentFreqs(docs[i], frequencies);
-       }
+        for (var i = 0; i < docs.length; ++i) {
+          var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
+          metadata = data[0];
+          pkMap = data[1];
+        }
 
-       callback([this._computePercentage(metadata, docs.length), frequencies]);
-     }
+        metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
+
+        if(dataReturnedFind.length !== docs.length){ //if they have the same length they are the same subset
+
+          //otherwise i want to know which keys aren't in the subset
+
+          var realMetaData = {};
+
+          for (var i = 0; i < dataReturnedFind.length; ++i)
+            realMetaData = this._getDocumentMetadata(dataReturnedFind[i], realMetaData, new Map())[0];
+
+          for(var key in realMetaData)
+              if (!(key in metadata))
+                metadata[key] = {
+                  "type" : realMetaData[key].type,
+                  "count" : 0,
+                  "percentage": 0,
+                  "multiple": false,
+                  "cwa": false,
+                  "children": {},
+                  "cpk": false
+                };
+        }
+
+        // TODO: Refactor this
+        if (useMapReduce) {
+          this._getDocumentFreqsMapReduce("", (result) => {
+            callback([this._computePercentage(metadata, docs.length), result]);
+          });
+        } else {
+          var frequencies = {};
+          for (var i = 0; i < docs.length; ++i) {
+            frequencies = this._getDocumentFreqs(docs[i], frequencies);
+          }
+
+          callback([this._computePercentage(metadata, docs.length), frequencies]);
+        }
+
+     });
    },
 
    /*
