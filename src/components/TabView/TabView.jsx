@@ -167,7 +167,7 @@ class ProfileTab extends Tab
           <div style={ {background:'rgba(0,0,0,0)'} } className={ classnames(styles.rowscore) }></div>
           <div className="col-md-2"><b>Key</b></div>
           <div className="col-md-1"><b>Occurrences</b></div>
-          <div className="col-md-1"><b>Completness</b></div>
+          <div className="col-md-1"><b>Completeness</b></div>
           <div className="col-md-1"><b>Type</b></div>
           <div className="col-md-1"><b>MultipleTypes</b></div>
           <div className="col-md-1"><b>Closed World Assuption</b></div>

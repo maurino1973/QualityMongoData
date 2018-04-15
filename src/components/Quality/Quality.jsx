@@ -84,10 +84,13 @@ class Quality extends Component {
 
   /**random request*/
   getRandSubsetImpl(event){
-    var value = parseInt(document.getElementById("nRandom").value);
-    this.setState({validSampleSize: !isNaN(value) && value > 0});
+    var value = Number(document.getElementById("nRandom").value);
+    var isPositiveInteger = Number.isInteger(value) && value > 0;
+    this.setState({validSampleSize: isPositiveInteger});
 
-    this.props.actions.randomRequestFunct(document.getElementById("nRandom").value);
+    if (isPositiveInteger) {
+      this.props.actions.randomRequestFunct(document.getElementById("nRandom").value);
+    }
   }
 
   componentWillMount() {
