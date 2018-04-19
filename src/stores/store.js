@@ -66,6 +66,200 @@ class CompletenessMetricEngine extends MetricEngine
   }
 }
 
+class ConsistencyMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+
+    this.state.options = {
+      tables: [],
+      rules: []
+    };
+  }
+
+  compute(docs, props) {
+    this.state.options = props;
+    console.log("Compute", this.state.options);
+
+    var tpaths = [];
+    var tcontent = [];
+
+    for (var i in this.state.options.tables) {
+      tpaths.push(this._parsePath(this.state.options.tables[i].path));
+      tcontent.push(this._parseTable(this.state.options.tables[i].content));
+    }
+    console.assert (tpaths.length == tcontent.length);
+
+    //---------------------------------------------------------
+
+    var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
+    var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
+
+    if ((tableScore == null && this.state.options.tables.length > 0) ||
+        (rulesScore == null && this.state.options.rules.length > 0)) {
+      return -1;
+    }
+
+    var totalScore = (tableScore + rulesScore) / 2.0;
+
+    console.assert(totalScore >= 0.0 && totalScore <= 1.0);
+    return totalScore;
+  }
+
+  _computeTablesScore(tpaths, tcontent, docs) {
+    var paths_scores = [];
+    for (var i in tpaths) {
+      var table_scores = [0, 0];  // count, match
+      for (var j in docs) {
+        var doc = docs[j];
+
+        var table_match = this._matchTable(doc, tpaths[i], tcontent[i]);
+
+        if (table_match != null) {
+          table_scores[0] += 1;
+        }
+
+        if (table_match == true) {
+          table_scores[1] += 1;
+        }
+      }
+
+      if (table_scores[0] == 0) {
+        paths_scores.push(null);
+      } else {
+        paths_scores.push(table_scores[1] / table_scores[0]);
+      }
+    }
+
+    if (paths_scores.length == 0) {
+      console.log("Score is undefined");
+      return null;
+    }
+
+    var mean = 0.0;
+    for (var i in paths_scores) {
+      var score = paths_scores[i];
+
+      if (score == null) {
+        console.log("Score is undefined");
+        return null;
+      } else {
+        mean += score;
+      }
+    }
+
+    return mean / paths_scores.length;
+  }
+
+  _computeRulesScore(rules, docs) {
+    var total_scores = [];
+    for (var i in rules) {
+      var rule = rules[i];
+
+      var ifpath    = this._parsePath(rule["if"]["antecedent"]);
+      var ifvalue   = rule["if"]["consequent"];
+      var thenpath  = this._parsePath(rule["then"]["antecedent"]);
+      var thenvalue = rule["then"]["consequent"];
+
+      var rule_scores = [0, 0]; // count, match
+      for (var j in docs) {
+        var doc = docs[j];
+
+        var rule_match = this._matchRule(doc, ifpath, ifvalue, thenpath, thenvalue);
+
+        if (rule_match != null) {
+          rule_scores[0] += 1;
+        }
+
+        if (rule_match == true) {
+          rule_scores[1] += 1;
+        }
+      }
+
+      if (rule_scores[0] == 0) {
+        total_scores.push(null);
+      } else {
+        total_scores.push(rule_scores[1] / rule_scores[0]);
+      }
+    }
+
+    if (total_scores.length == 0) {
+      console.log("Score is undefined");
+      return null;
+    }
+
+    var mean = 0.0;
+    for (var i in total_scores) {
+      var score = total_scores[i];
+
+      if (score == null) {
+        console.log("Score is undefined");
+        return null;
+      } else {
+        mean += score;
+      }
+    }
+
+    return mean / total_scores.length;
+  }
+
+  _matchRule(doc, ifpath, ifvalue, thenpath, thenvalue) {
+    var attr_ante = this._getDocAttribute(doc, ifpath);
+    var attr_cons = this._getDocAttribute(doc, thenpath);
+
+    if (attr_ante != null) {
+      if (attr_cons != null) {
+        if (attr_ante == ifvalue) {   //TODO: implement operators
+          return attr_cons == thenvalue;
+        } else {
+          return null;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    console.log("No rule attributes ", attr_ante);
+    return null;
+  }
+
+  _matchTable(doc, path, content) {
+    var attr = this._getDocAttribute(doc, path);
+
+    if (attr != null) {
+      return content.indexOf(attr.toString()) != -1; //NOTE: is binary search more appropriate?
+    }
+
+    console.log("No attribute " + path);
+    return null;
+  }
+
+  _parsePath(raw) {
+    return raw.trim().split(".");
+  }
+
+  _parseTable(raw) {
+    return Array.from(new Set(raw.split("\n"))).sort();
+  }
+
+  _getDocAttribute(doc, path) {
+    console.assert(path.length > 0);
+
+    var currDoc = doc;
+    for (var i in path) {
+      var subpath = path[i];
+      if (subpath in currDoc) {
+        currDoc = currDoc[subpath];
+      } else {
+        currDoc = null;
+        break;
+      }
+    }
+
+    return currDoc;
+  }
+}
+
 class TestMetricEngine extends MetricEngine
 {
   constructor() {
@@ -77,6 +271,7 @@ class TestMetricEngine extends MetricEngine
   compute(docs, props) {
     this.state.options = props;
     console.log("Compute", this.state.options);
+
     return 1.0;
   }
 }
@@ -186,6 +381,7 @@ class TestMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
+       "ConsistencyMetric": new ConsistencyMetricEngine(),
        "TestMetric": new TestMetricEngine()
      };
 

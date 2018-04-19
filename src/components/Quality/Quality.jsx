@@ -29,6 +29,273 @@ class CompletenessMetricTab extends MetricTab {
   }
 }
 
+class ConsistencyMetricTab extends MetricTab {
+  static displayName = 'ConsistencyMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    this._badTables = this._badTables.bind(this);
+    this._badRules  = this._badRules.bind(this);
+    this._compute   = this._compute.bind(this);
+
+    this.state["badTables"] = [];
+    this.state["badRules"]  = [];
+  }
+
+  addTable() {
+    var btabs = this._badTables();
+
+    if (btabs.length != 0) {
+      this.setState({
+        badTables: btabs
+      });
+    } else {
+      var newTable = this.state.options;
+      newTable.tables.push({
+        "path": "",
+        "content": ""
+      });
+
+      this.setState({
+        options: newTable,
+        badTables: []
+      });
+    }
+  }
+
+  removeTable(index) {
+    var remTable = this.state.options;
+    remTable.tables.splice(index, 1);
+
+    this.setState({
+      options: remTable
+    });
+  }
+
+  updateTable(part, index, evt) {
+    console.log("updateTable");
+    var tablePart = "";
+
+    switch(part) {
+      case 0:
+        tablePart = "path";
+        break;
+      case 1:
+        tablePart = "content"
+        break;
+      default:
+        console.assert(false);
+    }
+
+
+    var newTable = this.state.options;
+    newTable.tables[index][tablePart] = evt.target.value;
+
+    this.setState({
+      options: newTable
+    });
+  }
+
+  addRule() {
+    var bRules = this._badRules();
+
+    if (bRules.length != 0) {
+      this.setState({
+        badRules: bRules
+      });
+    } else {
+      var newRule = this.state.options;
+      newRule.rules.push({
+        "if": {
+          "antecedent": "",
+          "consequent": ""
+        },
+        "then": {
+          "antecedent": "",
+          "consequent": ""
+        }
+      });
+
+      this.setState({
+        options: newRule,
+        badRules: []
+      });
+    }
+  }
+
+  removeRule(index) {
+    var remRule = this.state.options;
+    remRule.rules.splice(index, 1);
+
+    this.setState({
+      options: remRule,
+      badRules: this._badRules()
+    });
+  }
+
+  updateRule(part, index, evt) {
+    console.log("updateRule");
+    var rulePart = "";
+    var ruleSubPart = "";
+
+    switch(part) {
+      case 0:
+        rulePart = "if";
+        ruleSubPart = "antecedent";
+        break;
+      case 1:
+        rulePart = "if";
+        ruleSubPart = "consequent";
+        break;
+      case 2:
+        rulePart = "then";
+        ruleSubPart = "antecedent";
+        break;
+      case 3:
+        rulePart = "then";
+        ruleSubPart = "consequent";
+        break;
+      default:
+        console.assert(false);
+    }
+
+
+    var newRule = this.state.options;
+    newRule.rules[index][rulePart][ruleSubPart] = evt.target.value;
+
+    this.setState({
+      options: newRule
+    });
+  }
+
+  renderContent() {
+    var canAddTableStyle = function(index, tabLen, canAddTable) {
+      if (index < tabLen - 1) {
+        return true;
+      }
+
+      return canAddTable;
+    }
+
+    return (
+      <div>
+        <span>Truth tables:</span>
+        <ol>
+          {
+            this.state.options.tables.map((curr, index) => {
+              return (
+                <li>
+                  <span>Key</span>
+                  <input className={classnames(styles.inputRule)}
+                         style={this.state.badTables.indexOf(index) != -1 ? {background:"orangered"} : {}}
+                         type="text"
+                         value={curr["path"]}
+                         onChange={(evt) => { this.updateTable.bind(this, 0, index)(evt) }}/>
+                  <div>
+                    <textarea rows="4" cols="50"
+                              value={curr["content"]}
+                              onChange={(evt) => { this.updateTable.bind(this, 1, index)(evt) }}/>
+                  </div>
+                  <input type="button" onClick={this.removeTable.bind(this, index)} value="Remove"/>
+                </li>
+              );
+            })
+          }
+        </ol>
+        <input type="button" onClick={this.addTable.bind(this)} value="Add table"/>
+
+        <hr/>
+
+        <span>Business rules:</span>
+        <ol>
+        {
+          this.state.options.rules.map((curr, index) => {
+            return (
+              <li>
+                <span>If</span>
+                <input className={classnames(styles.inputRule)}
+                      type="text"
+                      style={this.state.badRules.indexOf(index) != -1 ? {background:"orangered"} : {}}
+                      value={curr["if"]["antecedent"]}
+                      onChange={(evt) => { this.updateRule.bind(this, 0, index)(evt) }}
+                      />
+                <select>
+                  <option value="equal">equals</option>
+                </select>
+                <input className={classnames(styles.inputRule)}
+                      type="text"
+                      value={curr["if"]["consequent"]}
+                      onChange={(evt) => { this.updateRule.bind(this, 1, index)(evt) }}
+                      />
+
+
+                <span>Then</span>
+                <input className={classnames(styles.inputRule)}
+                      type="text"
+                      style={this.state.badRules.indexOf(index) != -1 ? {background:"orangered"} : {}}
+                      value={curr["then"]["antecedent"]}
+                      onChange={(evt) => { this.updateRule.bind(this, 2, index)(evt) }}
+                      />
+                <select>
+                  <option value="equal">equals</option>
+                </select>
+                <input className={classnames(styles.inputRule)}
+                      type="text"
+                      value={curr["then"]["consequent"]}
+                      onChange={(evt) => { this.updateRule.bind(this, 3, index)(evt) }}
+                      />
+                <input type="button" onClick={this.removeRule.bind(this, index)} value="Remove"/>
+              </li>
+            );
+          })
+        }
+
+        </ol>
+        <input type="button" onClick={this.addRule.bind(this)} value="Add rule"/>
+      </div>
+    );
+  }
+
+  _compute() {
+    var btables = this._badTables();
+    var brules = this._badRules();
+
+    this.setState({
+      badTables: btables,
+      badRules: brules
+    });
+
+    if (btables.length == 0 && brules.length == 0) {
+      MetricTab.prototype._compute.call(this);
+    }
+  }
+
+  _badTables() {
+    var res = [];
+    for (var i = 0; i < this.state.options.tables.length; ++i) {
+      var table = this.state.options.tables[i];
+
+      if (table.path.length == 0) {
+        res.push(i);
+      }
+    }
+    return res;
+  }
+
+  _badRules() {
+    var res = [];
+    for (var i = 0; i < this.state.options.rules.length; ++i) {
+      var rule = this.state.options.rules[i];
+
+      if (rule["if"]["antecedent"].length == 0 || rule["then"]["antecedent"].length == 0) {
+        res.push(i);
+      }
+    }
+    return res;
+  }
+}
+
 class TestMetricTab extends MetricTab {
   static displayName = 'TestMetricTab';
 
@@ -154,6 +421,7 @@ class Quality extends Component {
     //TODO: Place this in ctor
     var metricCompMap = {
       "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
+      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"],
       "TestMetric": [TestMetricTab, "Test"]
     };
 
