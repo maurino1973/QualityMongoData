@@ -54,56 +54,88 @@ class CandidatePkMetricTab extends MetricTab{
 }
 
 class RegexMetricTab extends MetricTab{
-  static displayName = 'TestMetricTab';
+  static displayName = 'RegexMetricTab';
 
   constructor(props) {
     super(props);
-
-    this.change = this.change.bind(this);
+    this.keys = (function(docs, ricFun){
+                    var meta = [];
+                    for(var i = 0; i<docs.length; i++){
+                      for (var key in docs[i]){
+                        if(meta.indexOf(key) === -1){
+                          if(!(docs[i][key] instanceof Array) && typeof docs[i][key] == "object" && key != "_id"){
+                            meta = ricFun(meta, docs[i][key], key, ricFun);
+                          }else{
+                            meta.push(key);
+                          }
+                        }
+                      }
+                    }
+                    return meta;
+                  })(this.props.docs, this.analyzeObject);
+    console.log(this.keys);
+    var opt = this.state.options;
+    opt["path"] = this.keys[0];
+    this.setState({options: opt});
+    this.changeAttr = this.changeAttr.bind(this);
+    this.changeExpr = this.changeExpr.bind(this);
   }
 
-  change() {
-    this.setState({options: document.getElementById("regexMetric").value});
-  }
-
-  renderContent() {
-    return (
-      <div>
-        <p>
-          The "Regex metric" scores the accuracy of the regex measured on the attributes in the current collection.
-        </p>
-        <p>
-          The score would be low if only a few attributes match with the regex.
-          Otherwise, the score would be high if a lot of attributes match with.
-        </p>
-        <input type="text" id="regexMetric"/>
-      </div>
-    );
-  }
-}
-
-class TestMetricTab extends MetricTab {
-  static displayName = 'TestMetricTab';
-
-  constructor(props) {
-    super(props);
-
-    this.change = this.change.bind(this);
-  }
-
-  change() {
-    if (this.state.options == "hello") {
-      this.setState({options: "world"});
-    } else {
-      this.setState({options: "hello"});
+  analyzeObject(meta, obj, path, ricFun){
+    for(var key in obj){
+      var tmpPath = path + "." + key;
+      if(meta.indexOf(tmpPath) === -1){
+        meta.push(tmpPath);
+        if(!(obj[key] instanceof Array) && typeof obj[key] == "object")
+          meta = ricFun(meta, obj[key], tmpPath, ricFun);
+      }
     }
+    return meta;
+  }
+
+  changeAttr(evt) {
+    var newPath = evt.target.options[evt.target.selectedIndex].value;
+    console.log("changed", newPath);
+    var opt = this.state.options;
+    opt["path"] = newPath;
+    this.setState({options: opt});
+  }
+
+  changeExpr(evt) {
+    var opt = this.state.options;
+    opt["regex"] = evt.target.value;
+    this.setState({options: opt});
   }
 
   renderContent() {
     return (
       <div>
-        { this.state.options }
-        <input type="button" onClick={this.change} value="change"/>
+        <p>
+          The "Regex metric" scores the accuracy of the regex measured on the indicated attribute (in the current collection).
+        </p>
+        <p>
+          The score would be low if only a few values of the attribute match with the regex.
+          Otherwise, the score would be high if a lot of values of the attribute match with.
+        </p>
+        <p>
+          Below you could choose the attribute to analyze.
+        </p><p>
+          <select onChange={this.changeAttr}>
+          {
+            this.keys.map((key) => {
+              return (
+                <option value={key.toString()}>{key.toString()}</option>
+                );
+              })
+          }
+          </select>
+        </p>
+        <p>
+          Here you could insert the regular expression. (If you leave this field empty the result will be equal to 0%)
+        </p>
+        <p>
+          $regex: /<input type="text" onChange={this.changeExpr}/>/
+        </p>
       </div>
     );
   }
@@ -183,7 +215,6 @@ class Quality extends Component {
               className={classnames(styles.inputSample)} type="text" id="nRandom"/>
 
             <input type="button" onClick={this.getRandSubset} value="Get the subset"/>
-            <input type="hidden" id="nRandomHidden" value={this.props.numRequested}/>
 
             <input type="button" onClick={this.resetSubset} value="Reset"/>
           </div>
@@ -205,8 +236,7 @@ class Quality extends Component {
     var metricCompMap = {
       "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
       "CandidatePkMetric": [CandidatePkMetricTab, "Candidate Primary Key"],
-      "RegexMetric": [RegexMetricTab, "Regex Accuracy"],
-      "TestMetric": [TestMetricTab, "Test"]
+      "RegexMetric": [RegexMetricTab, "Regex Accuracy"]
     };
 
     for (const key in engines) {
@@ -219,6 +249,7 @@ class Quality extends Component {
                         engine={key}
                         score={engines[key]}
                         options={options}
+                        docs={this.props._docs}
                         compute={(props) =>
                           this.props.actions.computeMetric(key, props)
                         }/>
