@@ -61,6 +61,7 @@ class CompletenessMetricEngine extends MetricEngine
     for (var key in occurrences) {
       score += occurrences[key]
     }
+
     score /= Object.keys(occurrences).length;
     return score;
   }
@@ -122,30 +123,66 @@ class RegexMetricEngine extends MetricEngine
   constructor() {
     super();
 
-    this.state.options = "";
+    this.state.options = {"path" : "", "regex" : ""};
   }
 
   compute(docs, props) {
     this.state.options = props;
-    console.log("Compute", this.state.options);
-    return 1.0;
-  }
-}
 
-class TestMetricEngine extends MetricEngine
-{
-  constructor() {
-    super();
+    if(!this.state.options["regex"])
+      return 0.0;
 
-    this.state.options = "hello";
+    var path = this.state.options["path"].split('.');
+
+    var numAttr = 0;
+
+    if(path.length <= 0)
+      return 0.0;
+
+    var score = 0.0;
+
+    for (var i = 0; i < docs.length; ++i) {
+      for (var key in docs[i]) {
+        if(key === path[0]){
+          if(path.length == 1){
+            if (RegExp(this.state.options["regex"]).test(docs[i][key]))
+              score += 1;
+            }else{
+              var match = this.checkMatching(docs[i][key], path.slice(1), this.state.options["regex"]);
+              if(match[0])
+                score += 1;
+              numAttr += parseInt(match[1]);
+            }
+            numAttr += 1;
+          }
+        }
+      }
+
+      if(numAttr == 0)
+        return 0;
+
+      score /= numAttr;
+
+      return score;
+    }
+
+  checkMatching(obj, path, reg){
+
+      for(var key in obj)
+      {
+        if(key === path[0]){
+          if(path.length == 1){
+            return [RegExp(reg).test(obj[key]), 1];
+          }else{
+            return this.checkMatching(obj[key], path.slice(1), reg);
+          }
+        }
+      }
+      return [false, 0];
   }
 
-  compute(docs, props) {
-    this.state.options = props;
-    console.log("Compute", this.state.options);
-    return 1.0;
   }
-}
+
 
 /**
  * Performance Plugin store.
@@ -252,8 +289,7 @@ class TestMetricEngine extends MetricEngine
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
        "CandidatePkMetric": new CandidatePkMetricEngine(),
-       "RegexMetric": new RegexMetricEngine(),
-       "TestMetric": new TestMetricEngine()
+       "RegexMetric": new RegexMetricEngine()
      };
 
      var metrics = {};
@@ -342,18 +378,14 @@ class TestMetricEngine extends MetricEngine
 
      if(!(isNaN(number) || number<=0)){
        this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
-         var tmpMetaData = [];
-         if(number >= dataReturnedFind.length){
-           return;
-         }
 
          var tmpValues = [];
 
-         var factor = parseInt(dataReturnedFind.length / number);
-
-         for(var i=0, c=0; c < number; i = i + factor, c++){
-           tmpValues.push(dataReturnedFind[i]);
-         }
+         if(number >= dataReturnedFind.length){
+           tmpValues = dataReturnedFind;
+         }else{
+           tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+        }
 
          this._calculateMetaData(tmpValues, false, (data) => {
            console.log("randomRequestFunct");
