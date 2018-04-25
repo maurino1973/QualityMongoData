@@ -61,10 +61,127 @@ class CompletenessMetricEngine extends MetricEngine
     for (var key in occurrences) {
       score += occurrences[key]
     }
+
     score /= Object.keys(occurrences).length;
     return score;
   }
 }
+
+class CandidatePkMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+  }
+
+  compute(docs, props) {
+
+    var pkMap = new Map();
+    var numKeys = 0;
+
+    for (var i = 0; i < docs.length; ++i) {
+      for (var key in docs[i]) {
+        if (pkMap.has(key)) {
+          pkMap.get(key).push(docs[i][key]);
+        }else{
+          pkMap.set(key, [docs[i][key]]);
+          numKeys += 1;
+        }
+      }
+    }
+
+    var score = 0.0;
+
+    pkMap.forEach(function (item, key, mapObj) {
+        if(item.length === docs.length){
+          var candidate = true;
+          var x = 0;
+          var el = item.sort();
+
+          if(!el[0])
+            candidate = false;
+
+          while(candidate && x<el.length-1){
+            if(_.isEqual(el[x], el[x+1]) || !(el[x+1]))
+              candidate = false;
+            x++;
+          }
+
+          if(candidate)
+            score += 1;
+        }
+    });
+
+    console.log("CPK metric", score, docs.length);
+
+    score /= numKeys;
+    return score;
+  }
+}
+
+class RegexMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+
+    this.state.options = {"path" : "", "regex" : ""};
+  }
+
+  compute(docs, props) {
+    this.state.options = props;
+
+    if(!this.state.options["regex"])
+      return 0.0;
+
+    var path = this.state.options["path"].split('.');
+
+    var numAttr = 0;
+
+    if(path.length <= 0)
+      return 0.0;
+
+    var score = 0.0;
+
+    for (var i = 0; i < docs.length; ++i) {
+      for (var key in docs[i]) {
+        if(key === path[0]){
+          if(path.length == 1){
+            if (RegExp(this.state.options["regex"]).test(docs[i][key]))
+              score += 1;
+            }else{
+              var match = this.checkMatching(docs[i][key], path.slice(1), this.state.options["regex"]);
+              if(match[0])
+                score += 1;
+              numAttr += parseInt(match[1]);
+            }
+            numAttr += 1;
+          }
+        }
+      }
+
+      if(numAttr == 0)
+        return 0;
+
+      score /= numAttr;
+
+      return score;
+    }
+
+  checkMatching(obj, path, reg){
+
+      for(var key in obj)
+      {
+        if(key === path[0]){
+          if(path.length == 1){
+            return [RegExp(reg).test(obj[key]), 1];
+          }else{
+            return this.checkMatching(obj[key], path.slice(1), reg);
+          }
+        }
+      }
+      return [false, 0];
+  }
+
+  }
 
 class ConsistencyMetricEngine extends MetricEngine
 {
@@ -332,7 +449,6 @@ class ConsistencyMetricEngine extends MetricEngine
     return currDoc;
   }
 }
-
 /**
  * Performance Plugin store.
  */
@@ -368,50 +484,51 @@ class ConsistencyMetricEngine extends MetricEngine
 	 *
 	 * @param {Object} appRegistry - app registry containing all stores and components
 	 */
-	// eslint-disable-next-line no-unused-vars
-	//onActivated(appRegistry) {
-		// Events emitted from the app registry:
-		//
-		// appRegistry.on('application-intialized', (version) => {
-		//   // Version is string in semver format, ex: "1.10.0"
-		// });
-		//
-		//appRegistry.on('data-service-intialized', (dataService) => {
-		   // dataService is not yet connected. Can subscribe to events.
-		   // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
-		 //});
-		//
+  /** eslint-disable-next-line no-unused-vars
+    //onActivated(appRegistry) {
+      // Events emitted from the app registry:
+      //
+      // appRegistry.on('application-intialized', (version) => {
+      //   // Version is string in semver format, ex: "1.10.0"
+      // });
+      //
+      //appRegistry.on('data-service-intialized', (dataService) => {
+        // dataService is not yet connected. Can subscribe to events.
+        // DataService API: https://github.com/mongodb-js/data-service/blob/master/lib/data-service.js
+      //});
+      //
 
-		//
-		// appRegistry.on('collection-changed', (namespace) => {
-		  //The collection has changed - provides the current namespace.
-		//   // Namespace format: 'database.collection';
-		//   // Collection selected: 'database.collection';
-		//   // Database selected: 'database';
-		//   // Instance selected: '';
-		// });
-		//
-		// appRegistry.on('database-changed', (namespace) => {
-		//   // The database has changed.
-		//   // Namespace format: 'database.collection';
-		//   // Collection selected: 'database.collection';
-		//   // Database selected: 'database';
-		//   // Instance selected: '';
-		// });
-		//
-		// appRegistry.on('query-applied', (queryState) => {
-		//   // The query has changed and the user has clicked "filter" or "reset".
-		//   // queryState format example:
-		//   //   {
-		//   //     filter: { name: 'testing' },
-		//   //     project: { name: 1 },
-		//   //     sort: { name: -1 },
-		//   //     skip: 0,
-		//   //     limit: 20,
-		//   //     ns: 'database.collection'
-		//   //   }
-		// });
-	//},
+      //
+      // appRegistry.on('collection-changed', (namespace) => {
+        //The collection has changed - provides the current namespace.
+      //   // Namespace format: 'database.collection';
+      //   // Collection selected: 'database.collection';
+      //   // Database selected: 'database';
+      //   // Instance selected: '';
+      // });
+      //
+      // appRegistry.on('database-changed', (namespace) => {
+      //   // The database has changed.
+      //   // Namespace format: 'database.collection';
+      //   // Collection selected: 'database.collection';
+      //   // Database selected: 'database';
+      //   // Instance selected: '';
+      // });
+      //
+      // appRegistry.on('query-applied', (queryState) => {
+      //   // The query has changed and the user has clicked "filter" or "reset".
+      //   // queryState format example:
+      //   //   {
+      //   //     filter: { name: 'testing' },
+      //   //     project: { name: 1 },
+      //   //     sort: { name: -1 },
+      //   //     skip: 0,
+      //   //     limit: 20,
+      //   //     ns: 'database.collection'
+      //   //   }
+      // });
+    //},
+    */
 
 	onActivated(appRegistry) {
     //TODO: Change the way the plugin update itself: it should fetch data only
@@ -427,8 +544,6 @@ class ConsistencyMetricEngine extends MetricEngine
     });
 	},
 
-
-
 	/**
 	 * Initialize the Performance Plugin store state. The returned object must
 	 * contain all keys that you might want to modify with this.setState().
@@ -438,6 +553,8 @@ class ConsistencyMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
+       "CandidatePkMetric": new CandidatePkMetricEngine(),
+       "RegexMetric": new RegexMetricEngine(),
        "ConsistencyMetric": new ConsistencyMetricEngine()
      };
 
@@ -527,18 +644,14 @@ class ConsistencyMetricEngine extends MetricEngine
 
      if(!(isNaN(number) || number<=0)){
        this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
-         var tmpMetaData = [];
-         if(number >= dataReturnedFind.length){
-           return;
-         }
 
          var tmpValues = [];
 
-         var factor = parseInt(dataReturnedFind.length / number);
-
-         for(var i=0, c=0; c < number; i = i + factor, c++){
-           tmpValues.push(dataReturnedFind[i]);
-         }
+         if(number >= dataReturnedFind.length){
+           tmpValues = dataReturnedFind;
+         }else{
+           tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+        }
 
          this._calculateMetaData(tmpValues, false, (data) => {
            console.log("randomRequestFunct");
@@ -579,261 +692,261 @@ class ConsistencyMetricEngine extends MetricEngine
      this._computeGlobalScore(this.state.metrics, w);
    },
 
-   _computeGlobalScore(metrics, weights) {
-     /*
-      * NOTE: I use relative weights to simplify things, therefore I must convert
-      * these weights to absolute ones
-      */
-     var sum = 0.0;
-     for (var key in weights) {
-       sum += weights[key];
-     }
-     var x = 0.0;
+  _computeGlobalScore(metrics, weights) {
+    /*
+    * NOTE: I use relative weights to simplify things, therefore I must convert
+    * these weights to absolute ones
+    */
+    var sum = 0.0;
+    for (var key in weights) {
+      sum += weights[key];
+    }
+    var x = 0.0;
 
-     if (sum > 0.0) {
-       x = 1.0/sum;
-     }
-     var absWeights = {};
-     for (var key in weights) {
-       absWeights[key] = weights[key] * x;
-     }
+    if (sum > 0.0) {
+      x = 1.0/sum;
+    }
+    var absWeights = {};
+    for (var key in weights) {
+      absWeights[key] = weights[key] * x;
+    }
 
-     var cScore = 0.0;
-     for (var mName in metrics) {
-       cScore += metrics[mName] * absWeights[mName];
-     }
-     this.setState({collectionScore: 100 * cScore});
-   },
-
-   _getDocumentMetadata(doc, metadata, pkMap) {
-
-     for (var key in doc) {
-       if (!(key in metadata)) {
-         metadata[key] = {
-           "type" : [],
-           "count" : 0,
-           "percentage": 0,
-           "multiple": false,
-           "cwa": false,
-           "children": {}
-         };
-
-         pkMap.set(key, [doc[key]]);
-
-       }else{
-         try{
-          pkMap.get(key).push(doc[key]);
-         }catch(err){}
-      }
-
-       var type = this.getCurrentType(doc[key]);
-
-       if (metadata[key]["type"].indexOf(type) <= -1) { // No type in metadata
-         if (type == "null") {
-           metadata[key]["cwa"] = true;
-         }
-
-         metadata[key]["type"].push(type);
-         metadata[key]["type"] = metadata[key]["type"].sort();
-
-         if (metadata[key]["type"].length > 1) {
-           metadata[key]["multiple"] = true;
-         }
-       }
-
-       if (type == "object" && key != "_id") {    // Ignore private fields
-         metadata[key]["children"] = this._getDocumentMetadata(doc[key], metadata[key]["children"], new Map())[0];
-       }
-       metadata[key]["count"]++;
-     }
-
-     return [metadata, pkMap];
-   },
-
-   _getDocumentFreqsMapReduce(path, callback) {
-     var dbNs = this.namespace.split('.');
-     var collection = this.dataService.client.client.db(dbNs[0].toString(), {}).collection(dbNs[1].toString(), {});
-
-     var fullpath = path;
-     if (fullpath != "") {
-       fullpath = "." + fullpath;
-     }
-
-     var map =
-       `
-       if (typeof this` + fullpath + ` === "object") {
-         for (var key in this` + fullpath + `) {
-           emit(key, null);
-         }
-       }`;
-     var mapFn = new Function("", map);
-
-     var reduce = function(k, vals) {
-       return null;
-     }
-
-     var options = {
-       out: {inline: 1},
-       query: this.filter
-     };
-
-     var keyCallback = (err, result) => {
-       var keys = [];
-
-       for (var i=0; i < result.length; ++i) {
-         keys.push(result[i]["_id"]);
-       }
-
-       var x = 0;
-       var freqs = {};
-       var getFreq = (x) => {
-         var key = keys[x];
-
-         var fullpath = path;
-         if (fullpath == "") {
-           fullpath = key;
-         } else {
-           fullpath = path + "." + key;
-         }
-
-         var map = "try{this." + fullpath + ";}catch(e){return;} if(this." + fullpath + "!=null){emit(this." + fullpath +", 1);}";
-         var mapFn = new Function("", map);
-
-         var reduce = function(k, vals) {
-           return Array.sum(vals);
-         }
-
-         var options = {
-           out: {inline: 1},
-           query: this.filter
-         };
-
-         var freqCallback = (err, result) => {
-           //BUG: MapReduce return 34 != "34" which is different from what we do
-           //     now, but since getCurrentType() works differently (check comment in the function)
-           //     if documents contains 34 and "34", the string is ignored and is not
-           //     inserted into the frequency table.
-
-           if (result.length != 0) {
-             freqs[key] = {
-               "values": {},  //<val> : {"count": 0, "type": null }
-               "children": {}
-             };
-
-             for (var j = 0; j < result.length; ++j) {
-               var type = this.getCurrentType(result[j]["_id"]);
-               freqs[key]["values"][result[j]["_id"]] = {"count": result[j]["value"], "type": type };
-
-               if (type == "object" && key != "_id") {    // Ignore private fields
-                 this._getDocumentFreqsMapReduce(fullpath, (result) => {
-                   freqs[key]["children"] = result;
-                 });
-               }
-             }
-           }
-
-           if (x < keys.length) {
-             getFreq(x + 1);
-           } else {
-             callback(freqs);
-           }
-         }
-
-         collection.mapReduce (
-           mapFn, //map
-           reduce, //reduce
-           options, //options
-           freqCallback
-         );
-       }
-
-       if (x < keys.length) {
-         getFreq(x);
-       }
-     }
-
-     collection.mapReduce (
-       map, //map
-       reduce, //reduce
-       options, //options
-       keyCallback
-     );
-   },
-
-   _getDocumentFreqs(doc, freqs) {
-     for (var key in doc) {
-       if (!(key in freqs)) {
-         freqs[key] = {
-           "values": {},  //<val> : {"count": 0, "type": null }
-           "children": {}
-         };
-       }
-
-       //NOTE: should I compute frequency of object type?
-       const currValue = doc[key];
-       var type = this.getCurrentType(currValue);
-
-       if (currValue in freqs[key]["values"]) {   // Value is not unique
-         freqs[key]["values"][currValue]["count"] += 1;
-       } else {
-         freqs[key]["values"][currValue] = {"count": 1, "type": type };
-       }
-
-       if (type == "object" && key != "_id") {    // Ignore private fields
-         freqs[key]["children"] = this._getDocumentFreqs(doc[key], freqs[key]["children"]);
-       }
-     }
-
-     return freqs;
-   },
-
-   _computePercentage(metadata, docsCount) {
-     for (var key in metadata) {
-       //console.log("key", key, metadata);
-       var percentage = metadata[key].count / docsCount;
-       metadata[key].percentage = Math.round(percentage * 100*100)/100;
-
-       if (Object.keys(metadata[key]["children"]).length > 0) {
-         metadata[key]["children"] = this._computePercentage(metadata[key]["children"], docsCount);
-       }
-     }
-
-     return metadata;
-   },
-
-   _computeCandidatePk(metadata, map, numDocs){
-
-     for(var key in metadata){
-
-       metadata[key]["cpk"] = false;
-
-        if(metadata[key]["count"] === numDocs){
-
-          var el = map.get(key).sort();
-
-          var candidate = true;
-          var x = 0;
-
-          if(!el[0])
-            candidate = false;
-
-          while(candidate && x<el.length-1){
-            if(_.isEqual(el[x], el[x+1]) || !(el[x+1]))
-              candidate = false;
-            x++;
-          }
-
-          if(candidate)
-            metadata[key]["cpk"] = true;
-
-        }
-
-     }
-
-     return metadata;
+    var cScore = 0.0;
+    for (var mName in metrics) {
+      cScore += metrics[mName] * absWeights[mName];
+    }
+    this.setState({collectionScore: 100 * cScore});
   },
 
-   _calculateMetaData(docs, useMapReduce, callback) {
+  _getDocumentMetadata(doc, metadata, pkMap) {
+
+    for (var key in doc) {
+      if (!(key in metadata)) {
+        metadata[key] = {
+          "type" : [],
+          "count" : 0,
+          "percentage": 0,
+          "multiple": false,
+          "cwa": false,
+          "children": {}
+        };
+
+        pkMap.set(key, [doc[key]]);
+
+      }else{
+        try{
+        pkMap.get(key).push(doc[key]);
+        }catch(err){}
+    }
+
+      var type = this.getCurrentType(doc[key]);
+
+      if (metadata[key]["type"].indexOf(type) <= -1) { // No type in metadata
+        if (type == "null") {
+          metadata[key]["cwa"] = true;
+        }
+
+        metadata[key]["type"].push(type);
+        metadata[key]["type"] = metadata[key]["type"].sort();
+
+        if (metadata[key]["type"].length > 1) {
+          metadata[key]["multiple"] = true;
+        }
+      }
+
+      if (type == "object" && key != "_id") {    // Ignore private fields
+        metadata[key]["children"] = this._getDocumentMetadata(doc[key], metadata[key]["children"], new Map())[0];
+      }
+      metadata[key]["count"]++;
+    }
+
+    return [metadata, pkMap];
+  },
+
+  _getDocumentFreqsMapReduce(path, callback) {
+    var dbNs = this.namespace.split('.');
+    var collection = this.dataService.client.client.db(dbNs[0].toString(), {}).collection(dbNs[1].toString(), {});
+
+    var fullpath = path;
+    if (fullpath != "") {
+      fullpath = "." + fullpath;
+    }
+
+    var map =
+      `
+      if (typeof this` + fullpath + ` === "object") {
+        for (var key in this` + fullpath + `) {
+          emit(key, null);
+        }
+      }`;
+    var mapFn = new Function("", map);
+
+    var reduce = function(k, vals) {
+      return null;
+    }
+
+    var options = {
+      out: {inline: 1},
+      query: this.filter
+    };
+
+    var keyCallback = (err, result) => {
+      var keys = [];
+
+      for (var i=0; i < result.length; ++i) {
+        keys.push(result[i]["_id"]);
+      }
+
+      var x = 0;
+      var freqs = {};
+      var getFreq = (x) => {
+        var key = keys[x];
+
+        var fullpath = path;
+        if (fullpath == "") {
+          fullpath = key;
+        } else {
+          fullpath = path + "." + key;
+        }
+
+        var map = "try{this." + fullpath + ";}catch(e){return;} if(this." + fullpath + "!=null){emit(this." + fullpath +", 1);}";
+        var mapFn = new Function("", map);
+
+        var reduce = function(k, vals) {
+          return Array.sum(vals);
+        }
+
+        var options = {
+          out: {inline: 1},
+          query: this.filter
+        };
+
+        var freqCallback = (err, result) => {
+          //BUG: MapReduce return 34 != "34" which is different from what we do
+          //     now, but since getCurrentType() works differently (check comment in the function)
+          //     if documents contains 34 and "34", the string is ignored and is not
+          //     inserted into the frequency table.
+
+          if (result.length != 0) {
+            freqs[key] = {
+              "values": {},  //<val> : {"count": 0, "type": null }
+              "children": {}
+            };
+
+            for (var j = 0; j < result.length; ++j) {
+              var type = this.getCurrentType(result[j]["_id"]);
+              freqs[key]["values"][result[j]["_id"]] = {"count": result[j]["value"], "type": type };
+
+              if (type == "object" && key != "_id") {    // Ignore private fields
+                this._getDocumentFreqsMapReduce(fullpath, (result) => {
+                  freqs[key]["children"] = result;
+                });
+              }
+            }
+          }
+
+          if (x < keys.length) {
+            getFreq(x + 1);
+          } else {
+            callback(freqs);
+          }
+        }
+
+        collection.mapReduce (
+          mapFn, //map
+          reduce, //reduce
+          options, //options
+          freqCallback
+        );
+      }
+
+      if (x < keys.length) {
+        getFreq(x);
+      }
+    }
+
+    collection.mapReduce (
+      map, //map
+      reduce, //reduce
+      options, //options
+      keyCallback
+    );
+  },
+
+  _getDocumentFreqs(doc, freqs) {
+    for (var key in doc) {
+      if (!(key in freqs)) {
+        freqs[key] = {
+          "values": {},  //<val> : {"count": 0, "type": null }
+          "children": {}
+        };
+      }
+
+      //NOTE: should I compute frequency of object type?
+      const currValue = doc[key];
+      var type = this.getCurrentType(currValue);
+
+      if (currValue in freqs[key]["values"]) {   // Value is not unique
+        freqs[key]["values"][currValue]["count"] += 1;
+      } else {
+        freqs[key]["values"][currValue] = {"count": 1, "type": type };
+      }
+
+      if (type == "object" && key != "_id") {    // Ignore private fields
+        freqs[key]["children"] = this._getDocumentFreqs(doc[key], freqs[key]["children"]);
+      }
+    }
+
+    return freqs;
+  },
+
+  _computePercentage(metadata, docsCount) {
+    for (var key in metadata) {
+      //console.log("key", key, metadata);
+      var percentage = metadata[key].count / docsCount;
+      metadata[key].percentage = Math.round(percentage * 100*100)/100;
+
+      if (Object.keys(metadata[key]["children"]).length > 0) {
+        metadata[key]["children"] = this._computePercentage(metadata[key]["children"], docsCount);
+      }
+    }
+
+    return metadata;
+  },
+
+  _computeCandidatePk(metadata, map, numDocs){
+
+    for(var key in metadata){
+
+      metadata[key]["cpk"] = false;
+
+      if(metadata[key]["count"] === numDocs){
+
+        var el = map.get(key).sort();
+
+        var candidate = true;
+        var x = 0;
+
+        if(!el[0])
+          candidate = false;
+
+        while(candidate && x<el.length-1){
+          if(_.isEqual(el[x], el[x+1]) || !(el[x+1]))
+            candidate = false;
+          x++;
+        }
+
+        if(candidate)
+          metadata[key]["cpk"] = true;
+
+      }
+
+    }
+
+    return metadata;
+  },
+
+  _calculateMetaData(docs, useMapReduce, callback) {
 
      this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
