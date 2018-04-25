@@ -7,6 +7,7 @@ import styles from './Quality.less';
 
 import PluginTabBar, {MetricTab} from 'components/TabView';
 
+
 class CompletenessMetricTab extends MetricTab {
   static displayName = 'CompletenessMetricTab';
 
@@ -35,33 +36,44 @@ class ConsistencyMetricTab extends MetricTab {
   constructor(props) {
     super(props);
 
-    this._badTables = this._badTables.bind(this);
-    this._badRules  = this._badRules.bind(this);
-    this._compute   = this._compute.bind(this);
+    var getKeys = function(meta, doc, subkey) {
+      for (var key in doc) {
+        var currKey = key;
 
-    this.state["badTables"] = [];
-    this.state["badRules"]  = [];
+        if (subkey != "") {
+          currKey = subkey + "." + key;
+        }
+
+        if (meta.indexOf(currKey) == -1 && key != "_id") {
+          meta.push(currKey);
+        }
+
+        if (typeof doc[key] == "object" && !(doc[key] instanceof Array) && key != "_id") {
+          meta = getKeys(meta, doc[key], currKey);
+        }
+      }
+
+      return meta;
+    }
+
+    this.keys = [];
+    for (var i = 0; i < this.props.docs.length; ++i) {
+      this.keys = getKeys(this.keys, this.props.docs[i], "");
+    }
+
+    this.keys = this.keys.sort();
   }
 
   addTable() {
-    var btabs = this._badTables();
+    var newTable = this.state.options;
+    newTable.tables.push({
+      "path": this.keys[0],
+      "content": ""
+    });
 
-    if (btabs.length != 0) {
-      this.setState({
-        badTables: btabs
-      });
-    } else {
-      var newTable = this.state.options;
-      newTable.tables.push({
-        "path": "",
-        "content": ""
-      });
-
-      this.setState({
-        options: newTable,
-        badTables: []
-      });
-    }
+    this.setState({
+      options: newTable
+    });
   }
 
   removeTable(index) {
@@ -82,12 +94,11 @@ class ConsistencyMetricTab extends MetricTab {
         tablePart = "path";
         break;
       case 1:
-        tablePart = "content"
+        tablePart = "content";
         break;
       default:
         console.assert(false);
     }
-
 
     var newTable = this.state.options;
     newTable.tables[index][tablePart] = evt.target.value;
@@ -98,30 +109,23 @@ class ConsistencyMetricTab extends MetricTab {
   }
 
   addRule() {
-    var bRules = this._badRules();
+    var newRule = this.state.options;
+    newRule.rules.push({
+      "if": {
+        "antecedent": this.keys[0],
+        "consequent": "",
+        "op": this.state.options.op[0]
+      },
+      "then": {
+        "antecedent": this.keys[0],
+        "consequent": "",
+        "op": this.state.options.op[0]
+      }
+    });
 
-    if (bRules.length != 0) {
-      this.setState({
-        badRules: bRules
-      });
-    } else {
-      var newRule = this.state.options;
-      newRule.rules.push({
-        "if": {
-          "antecedent": "",
-          "consequent": ""
-        },
-        "then": {
-          "antecedent": "",
-          "consequent": ""
-        }
-      });
-
-      this.setState({
-        options: newRule,
-        badRules: []
-      });
-    }
+    this.setState({
+      options: newRule,
+    });
   }
 
   removeRule(index) {
@@ -129,8 +133,7 @@ class ConsistencyMetricTab extends MetricTab {
     remRule.rules.splice(index, 1);
 
     this.setState({
-      options: remRule,
-      badRules: this._badRules()
+      options: remRule
     });
   }
 
@@ -169,6 +172,29 @@ class ConsistencyMetricTab extends MetricTab {
     });
   }
 
+  onChangeOperator(part, index, event) {
+    var newOp = this.state.options;
+
+    var rulePart = "";
+    switch(part) {
+      case 0:
+        rulePart = "if";
+        break;
+      case 1:
+        rulePart = "then";
+        break;
+      default:
+        console.assert(false);
+    }
+
+    newOp.rules[index][rulePart]["op"] = event.target.value;
+
+    this.setState({
+      options: newOp
+    });
+  }
+
+  //TODO: Refactor
   renderContent() {
     var canAddTableStyle = function(index, tabLen, canAddTable) {
       if (index < tabLen - 1) {
@@ -187,16 +213,24 @@ class ConsistencyMetricTab extends MetricTab {
               return (
                 <li>
                   <span>Key</span>
-                  <input className={classnames(styles.inputRule)}
-                         style={this.state.badTables.indexOf(index) != -1 ? {background:"orangered"} : {}}
-                         type="text"
-                         value={curr["path"]}
-                         onChange={(evt) => { this.updateTable.bind(this, 0, index)(evt) }}/>
+                  <select value={curr["path"]}
+                          className={classnames(styles.select)}
+                          onChange={(evt) => { this.updateTable.bind(this, 0, index)(evt) }}>
+                    {
+                      this.keys.map((curr, index) => {
+                        return (
+                          <option value={curr}>{curr}</option>
+                        );
+                      })
+                    }
+                  </select>
+
                   <div>
                     <textarea rows="4" cols="50"
                               value={curr["content"]}
                               onChange={(evt) => { this.updateTable.bind(this, 1, index)(evt) }}/>
                   </div>
+
                   <input type="button" onClick={this.removeTable.bind(this, index)} value="Remove"/>
                 </li>
               );
@@ -214,14 +248,27 @@ class ConsistencyMetricTab extends MetricTab {
             return (
               <li>
                 <span>If</span>
-                <input className={classnames(styles.inputRule)}
-                      type="text"
-                      style={this.state.badRules.indexOf(index) != -1 ? {background:"orangered"} : {}}
-                      value={curr["if"]["antecedent"]}
-                      onChange={(evt) => { this.updateRule.bind(this, 0, index)(evt) }}
-                      />
-                <select>
-                  <option value="equal">equals</option>
+                <select value={curr["if"]["antecedent"]}
+                        className={classnames(styles.select)}
+                        onChange={(evt) => { this.updateRule.bind(this, 0, index)(evt) }}>
+                  {
+                    this.keys.map((curr, index) => {
+                      return (
+                        <option value={curr}>{curr}</option>
+                      );
+                    })
+                  }
+                </select>
+                <select value={curr["if"]["op"]}
+                        className={classnames(styles.select)}
+                        onChange={(evt) => {this.onChangeOperator.bind(this, 0, index)(evt)}}>
+                  {
+                    this.state.options.op.map((curr, index) => {
+                      return (
+                        <option value={curr}>{curr}</option>
+                      );
+                    })
+                  }
                 </select>
                 <input className={classnames(styles.inputRule)}
                       type="text"
@@ -231,15 +278,29 @@ class ConsistencyMetricTab extends MetricTab {
 
 
                 <span>Then</span>
-                <input className={classnames(styles.inputRule)}
-                      type="text"
-                      style={this.state.badRules.indexOf(index) != -1 ? {background:"orangered"} : {}}
-                      value={curr["then"]["antecedent"]}
-                      onChange={(evt) => { this.updateRule.bind(this, 2, index)(evt) }}
-                      />
-                <select>
-                  <option value="equal">equals</option>
+
+                <select value={curr["then"]["antecedent"]}
+                        className={classnames(styles.select)}
+                        onChange={(evt) => { this.updateRule.bind(this, 2, index)(evt) }}>
+                  {
+                    this.keys.map((curr, index) => {
+                      return (
+                        <option value={curr}>{curr}</option>
+                      );
+                    })
+                  }
                 </select>
+                <select value={curr["then"]["op"]}
+                        className={classnames(styles.select)}
+                        onChange={(evt) => {this.onChangeOperator.bind(this, 1, index)(evt)}}>
+                      {
+                        this.state.options.op.map((curr, index) => {
+                          return (
+                            <option value={curr}>{curr}</option>
+                          );
+                        })
+                      }
+                      </select>
                 <input className={classnames(styles.inputRule)}
                       type="text"
                       value={curr["then"]["consequent"]}
@@ -253,71 +314,6 @@ class ConsistencyMetricTab extends MetricTab {
 
         </ol>
         <input type="button" onClick={this.addRule.bind(this)} value="Add rule"/>
-      </div>
-    );
-  }
-
-  _compute() {
-    var btables = this._badTables();
-    var brules = this._badRules();
-
-    this.setState({
-      badTables: btables,
-      badRules: brules
-    });
-
-    if (btables.length == 0 && brules.length == 0) {
-      MetricTab.prototype._compute.call(this);
-    }
-  }
-
-  _badTables() {
-    var res = [];
-    for (var i = 0; i < this.state.options.tables.length; ++i) {
-      var table = this.state.options.tables[i];
-
-      if (table.path.length == 0) {
-        res.push(i);
-      }
-    }
-    return res;
-  }
-
-  _badRules() {
-    var res = [];
-    for (var i = 0; i < this.state.options.rules.length; ++i) {
-      var rule = this.state.options.rules[i];
-
-      if (rule["if"]["antecedent"].length == 0 || rule["then"]["antecedent"].length == 0) {
-        res.push(i);
-      }
-    }
-    return res;
-  }
-}
-
-class TestMetricTab extends MetricTab {
-  static displayName = 'TestMetricTab';
-
-  constructor(props) {
-    super(props);
-
-    this.change = this.change.bind(this);
-  }
-
-  change() {
-    if (this.state.options == "hello") {
-      this.setState({options: "world"});
-    } else {
-      this.setState({options: "hello"});
-    }
-  }
-
-  renderContent() {
-    return (
-      <div>
-        { this.state.options }
-        <input type="button" onClick={this.change} value="change"/>
       </div>
     );
   }
@@ -421,8 +417,7 @@ class Quality extends Component {
     //TODO: Place this in ctor
     var metricCompMap = {
       "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
-      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"],
-      "TestMetric": [TestMetricTab, "Test"]
+      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"]
     };
 
     for (const key in engines) {
@@ -435,6 +430,7 @@ class Quality extends Component {
                         engine={key}
                         score={engines[key]}
                         options={options}
+                        docs={this.props._docs}
                         compute={(props) =>
                           this.props.actions.computeMetric(key, props)
                         }/>

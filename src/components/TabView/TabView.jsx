@@ -136,10 +136,8 @@ class ProfileTab extends Tab
     super(props);
     this._renderFigure = this._renderFigure.bind(this);
 
-    this.setState({
-      currFreqData: {},
-      currKey: ""
-    });
+    this.state["currFreqData"] = {};
+    this.state["currKey"] = "";
   }
 
   renderContent() {
@@ -240,7 +238,7 @@ class ProfileTab extends Tab
 
   _renderFigure() {
     //NOTE: possible bug...
-    if (this.state) {
+    if (this.state && "values" in this.state.currFreqData) {
       // Sort frequencies...
       var pairs = Object.keys(this.state.currFreqData["values"]).map((key) => {
         return [key, this.state.currFreqData["values"][key]];

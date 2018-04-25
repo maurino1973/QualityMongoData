@@ -71,9 +71,64 @@ class ConsistencyMetricEngine extends MetricEngine
   constructor() {
     super();
 
+    //NOTE: Refactor these. Move them out
+    var equalOp = function(a, b) {
+      if (a == null && b === "null") {
+        return true;
+      }
+
+      if ((a && b === "true") || (!a && b === "false")) {
+        return true;
+      }
+
+      if (a instanceof Date &&
+          !isNaN(new Date(b)) &&
+          a.getTime() === new Date(b).getTime()) {
+        return true;
+      }
+
+      return a == b;
+    };
+
+    var minorOp = function(a, b) {
+      if (a instanceof Date && !isNaN(new Date(b))) {
+        return a < new Date(b);
+      }
+
+      if (isNaN(a) || isNaN(b)) {
+        return null;
+      }
+
+      return Number(a) < Number(b);
+    };
+
+    var unequalOp = function(a, b) {
+      return !equalOp(a, b);
+    };
+
+    var majorOp = function(a, b) {
+      if (a instanceof Date && !isNaN(new Date(b))) {
+        return a > new Date(b);
+      }
+
+      if (isNaN(a) || isNaN(b)) {
+        return null;
+      }
+
+      return Number(a) > Number(b);
+    };
+
+    this.operators = {
+      "equal": equalOp,
+      "unequal": unequalOp,
+      "<": minorOp,
+      ">": majorOp,
+    };
+
     this.state.options = {
       tables: [],
-      rules: []
+      rules: [],
+      op: Object.keys(this.operators)
     };
   }
 
@@ -94,13 +149,20 @@ class ConsistencyMetricEngine extends MetricEngine
 
     var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
     var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
+    var totalScore = null;
 
     if ((tableScore == null && this.state.options.tables.length > 0) ||
         (rulesScore == null && this.state.options.rules.length > 0)) {
       return -1;
     }
 
-    var totalScore = (tableScore + rulesScore) / 2.0;
+    if (tableScore == null) {
+      totalScore = rulesScore;
+    } else if (rulesScore == null) {
+      totalScore = tableScore;
+    } else {
+      totalScore = (tableScore + rulesScore) / 2.0;
+    }
 
     console.assert(totalScore >= 0.0 && totalScore <= 1.0);
     return totalScore;
@@ -157,15 +219,18 @@ class ConsistencyMetricEngine extends MetricEngine
       var rule = rules[i];
 
       var ifpath    = this._parsePath(rule["if"]["antecedent"]);
+      var ifop      = rule["if"]["op"];
       var ifvalue   = rule["if"]["consequent"];
       var thenpath  = this._parsePath(rule["then"]["antecedent"]);
+      var thenop    = rule["then"]["op"];
       var thenvalue = rule["then"]["consequent"];
 
       var rule_scores = [0, 0]; // count, match
       for (var j in docs) {
         var doc = docs[j];
 
-        var rule_match = this._matchRule(doc, ifpath, ifvalue, thenpath, thenvalue);
+        var rule_match = this._matchRule(doc, ifpath,   ifop,   ifvalue,
+                                              thenpath, thenop, thenvalue, this.operators);
 
         if (rule_match != null) {
           rule_scores[0] += 1;
@@ -203,23 +268,29 @@ class ConsistencyMetricEngine extends MetricEngine
     return mean / total_scores.length;
   }
 
-  _matchRule(doc, ifpath, ifvalue, thenpath, thenvalue) {
+
+  //NOTE: Too many params...
+  _matchRule(doc, ifpath, ifop, ifvalue, thenpath, thenop, thenvalue, ops) {
     var attr_ante = this._getDocAttribute(doc, ifpath);
     var attr_cons = this._getDocAttribute(doc, thenpath);
 
     if (attr_ante != null) {
-      if (attr_cons != null) {
-        if (attr_ante == ifvalue) {   //TODO: implement operators
-          return attr_cons == thenvalue;
+      console.log("IF", attr_ante, ifop, ifvalue, ops[ifop](attr_ante, ifvalue));
+      if (ops[ifop](attr_ante, ifvalue)) {
+        //NOTE: what happens if attr_cons exits but is equal to null??
+        if (true/*attr_cons != null*/) {
+          console.log("THEN", attr_cons, thenop, thenvalue, ops[thenop](attr_cons, thenvalue));
+          return ops[thenop](attr_cons, thenvalue);
         } else {
-          return null;
+          console.log("No rule attributes ", thenpath);
+          return false;
         }
       } else {
-        return false;
+        return null;
       }
     }
 
-    console.log("No rule attributes ", attr_ante);
+    console.log("No rule attributes ", ifpath);
     return null;
   }
 
@@ -246,9 +317,11 @@ class ConsistencyMetricEngine extends MetricEngine
     console.assert(path.length > 0);
 
     var currDoc = doc;
-    for (var i in path) {
+    for (var i = 0; i < path.length; ++i) {
       var subpath = path[i];
-      if (subpath in currDoc) {
+      //FIXME: this dont check path validity very well
+      // If you test likes.chips.type1 "cannot use in op to search for chips in pizza"
+      if (typeof currDoc == "object" && subpath in currDoc) {
         currDoc = currDoc[subpath];
       } else {
         currDoc = null;
@@ -257,22 +330,6 @@ class ConsistencyMetricEngine extends MetricEngine
     }
 
     return currDoc;
-  }
-}
-
-class TestMetricEngine extends MetricEngine
-{
-  constructor() {
-    super();
-
-    this.state.options = "hello";
-  }
-
-  compute(docs, props) {
-    this.state.options = props;
-    console.log("Compute", this.state.options);
-
-    return 1.0;
   }
 }
 
@@ -381,8 +438,7 @@ class TestMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
-       "ConsistencyMetric": new ConsistencyMetricEngine(),
-       "TestMetric": new TestMetricEngine()
+       "ConsistencyMetric": new ConsistencyMetricEngine()
      };
 
      var metrics = {};
