@@ -66,18 +66,270 @@ class CompletenessMetricEngine extends MetricEngine
   }
 }
 
-class TestMetricEngine extends MetricEngine
+class ConsistencyMetricEngine extends MetricEngine
 {
   constructor() {
     super();
 
-    this.state.options = "hello";
+    //NOTE: Refactor these. Move them out
+    var equalOp = function(a, b) {
+      if (a == null && b === "null") {
+        return true;
+      }
+
+      if ((a && b === "true") || (!a && b === "false")) {
+        return true;
+      }
+
+      if (a instanceof Date &&
+          !isNaN(new Date(b)) &&
+          a.getTime() === new Date(b).getTime()) {
+        return true;
+      }
+
+      return a == b;
+    };
+
+    var minorOp = function(a, b) {
+      if (a instanceof Date && !isNaN(new Date(b))) {
+        return a < new Date(b);
+      }
+
+      if (isNaN(a) || isNaN(b)) {
+        return null;
+      }
+
+      return Number(a) < Number(b);
+    };
+
+    var unequalOp = function(a, b) {
+      return !equalOp(a, b);
+    };
+
+    var majorOp = function(a, b) {
+      if (a instanceof Date && !isNaN(new Date(b))) {
+        return a > new Date(b);
+      }
+
+      if (isNaN(a) || isNaN(b)) {
+        return null;
+      }
+
+      return Number(a) > Number(b);
+    };
+
+    this.operators = {
+      "equal": equalOp,
+      "unequal": unequalOp,
+      "<": minorOp,
+      ">": majorOp,
+    };
+
+    this.state.options = {
+      tables: [],
+      rules: [],
+      op: Object.keys(this.operators)
+    };
   }
 
   compute(docs, props) {
     this.state.options = props;
     console.log("Compute", this.state.options);
-    return 1.0;
+
+    var tpaths = [];
+    var tcontent = [];
+
+    for (var i in this.state.options.tables) {
+      tpaths.push(this._parsePath(this.state.options.tables[i].path));
+      tcontent.push(this._parseTable(this.state.options.tables[i].content));
+    }
+    console.assert (tpaths.length == tcontent.length);
+
+    //---------------------------------------------------------
+
+    var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
+    var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
+    var totalScore = null;
+
+    if ((tableScore == null && this.state.options.tables.length > 0) ||
+        (rulesScore == null && this.state.options.rules.length > 0)) {
+      return -1;
+    }
+
+    if (tableScore == null) {
+      totalScore = rulesScore;
+    } else if (rulesScore == null) {
+      totalScore = tableScore;
+    } else {
+      totalScore = (tableScore + rulesScore) / 2.0;
+    }
+
+    console.assert(totalScore >= 0.0 && totalScore <= 1.0);
+    return totalScore;
+  }
+
+  _computeTablesScore(tpaths, tcontent, docs) {
+    var paths_scores = [];
+    for (var i in tpaths) {
+      var table_scores = [0, 0];  // count, match
+      for (var j in docs) {
+        var doc = docs[j];
+
+        var table_match = this._matchTable(doc, tpaths[i], tcontent[i]);
+
+        if (table_match != null) {
+          table_scores[0] += 1;
+        }
+
+        if (table_match == true) {
+          table_scores[1] += 1;
+        }
+      }
+
+      if (table_scores[0] == 0) {
+        paths_scores.push(null);
+      } else {
+        paths_scores.push(table_scores[1] / table_scores[0]);
+      }
+    }
+
+    if (paths_scores.length == 0) {
+      console.log("Score is undefined");
+      return null;
+    }
+
+    var mean = 0.0;
+    for (var i in paths_scores) {
+      var score = paths_scores[i];
+
+      if (score == null) {
+        console.log("Score is undefined");
+        return null;
+      } else {
+        mean += score;
+      }
+    }
+
+    return mean / paths_scores.length;
+  }
+
+  _computeRulesScore(rules, docs) {
+    var total_scores = [];
+    for (var i in rules) {
+      var rule = rules[i];
+
+      var ifpath    = this._parsePath(rule["if"]["antecedent"]);
+      var ifop      = rule["if"]["op"];
+      var ifvalue   = rule["if"]["consequent"];
+      var thenpath  = this._parsePath(rule["then"]["antecedent"]);
+      var thenop    = rule["then"]["op"];
+      var thenvalue = rule["then"]["consequent"];
+
+      var rule_scores = [0, 0]; // count, match
+      for (var j in docs) {
+        var doc = docs[j];
+
+        var rule_match = this._matchRule(doc, ifpath,   ifop,   ifvalue,
+                                              thenpath, thenop, thenvalue, this.operators);
+
+        if (rule_match != null) {
+          rule_scores[0] += 1;
+        }
+
+        if (rule_match == true) {
+          rule_scores[1] += 1;
+        }
+      }
+
+      if (rule_scores[0] == 0) {
+        total_scores.push(null);
+      } else {
+        total_scores.push(rule_scores[1] / rule_scores[0]);
+      }
+    }
+
+    if (total_scores.length == 0) {
+      console.log("Score is undefined");
+      return null;
+    }
+
+    var mean = 0.0;
+    for (var i in total_scores) {
+      var score = total_scores[i];
+
+      if (score == null) {
+        console.log("Score is undefined");
+        return null;
+      } else {
+        mean += score;
+      }
+    }
+
+    return mean / total_scores.length;
+  }
+
+
+  //NOTE: Too many params...
+  _matchRule(doc, ifpath, ifop, ifvalue, thenpath, thenop, thenvalue, ops) {
+    var attr_ante = this._getDocAttribute(doc, ifpath);
+    var attr_cons = this._getDocAttribute(doc, thenpath);
+
+    if (attr_ante != null) {
+      console.log("IF", attr_ante, ifop, ifvalue, ops[ifop](attr_ante, ifvalue));
+      if (ops[ifop](attr_ante, ifvalue)) {
+        //NOTE: what happens if attr_cons exits but is equal to null??
+        if (true/*attr_cons != null*/) {
+          console.log("THEN", attr_cons, thenop, thenvalue, ops[thenop](attr_cons, thenvalue));
+          return ops[thenop](attr_cons, thenvalue);
+        } else {
+          console.log("No rule attributes ", thenpath);
+          return false;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    console.log("No rule attributes ", ifpath);
+    return null;
+  }
+
+  _matchTable(doc, path, content) {
+    var attr = this._getDocAttribute(doc, path);
+
+    if (attr != null) {
+      return content.indexOf(attr.toString()) != -1; //NOTE: is binary search more appropriate?
+    }
+
+    console.log("No attribute " + path);
+    return null;
+  }
+
+  _parsePath(raw) {
+    return raw.trim().split(".");
+  }
+
+  _parseTable(raw) {
+    return Array.from(new Set(raw.split("\n"))).sort();
+  }
+
+  _getDocAttribute(doc, path) {
+    console.assert(path.length > 0);
+
+    var currDoc = doc;
+    for (var i = 0; i < path.length; ++i) {
+      var subpath = path[i];
+      //FIXME: this dont check path validity very well
+      // If you test likes.chips.type1 "cannot use in op to search for chips in pizza"
+      if (typeof currDoc == "object" && subpath in currDoc) {
+        currDoc = currDoc[subpath];
+      } else {
+        currDoc = null;
+        break;
+      }
+    }
+
+    return currDoc;
   }
 }
 
@@ -186,7 +438,7 @@ class TestMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
-       "TestMetric": new TestMetricEngine()
+       "ConsistencyMetric": new ConsistencyMetricEngine()
      };
 
      var metrics = {};
@@ -582,30 +834,57 @@ class TestMetricEngine extends MetricEngine
   },
 
    _calculateMetaData(docs, useMapReduce, callback) {
-     var metadata = {};
-     var pkMap = new Map();
 
-     for (var i = 0; i < docs.length; ++i) {
-       var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
-       metadata = data[0];
-       pkMap = data[1];
-     }
+     this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
-     metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
+        var metadata = {};
+        var pkMap = new Map();
 
-     // TODO: Refactor this
-     if (useMapReduce) {
-       this._getDocumentFreqsMapReduce("", (result) => {
-         callback([this._computePercentage(metadata, docs.length), result]);
-       });
-     } else {
-       var frequencies = {};
-       for (var i = 0; i < docs.length; ++i) {
-         frequencies = this._getDocumentFreqs(docs[i], frequencies);
-       }
+        for (var i = 0; i < docs.length; ++i) {
+          var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
+          metadata = data[0];
+          pkMap = data[1];
+        }
 
-       callback([this._computePercentage(metadata, docs.length), frequencies]);
-     }
+        metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
+
+        if(dataReturnedFind.length !== docs.length){ //if they have the same length they are the same subset
+
+          //otherwise i want to know which keys aren't in the subset
+
+          var realMetaData = {};
+
+          for (var i = 0; i < dataReturnedFind.length; ++i)
+            realMetaData = this._getDocumentMetadata(dataReturnedFind[i], realMetaData, new Map())[0];
+
+          for(var key in realMetaData)
+              if (!(key in metadata))
+                metadata[key] = {
+                  "type" : realMetaData[key].type,
+                  "count" : 0,
+                  "percentage": 0,
+                  "multiple": false,
+                  "cwa": false,
+                  "children": {},
+                  "cpk": false
+                };
+        }
+
+        // TODO: Refactor this
+        if (useMapReduce) {
+          this._getDocumentFreqsMapReduce("", (result) => {
+            callback([this._computePercentage(metadata, docs.length), result]);
+          });
+        } else {
+          var frequencies = {};
+          for (var i = 0; i < docs.length; ++i) {
+            frequencies = this._getDocumentFreqs(docs[i], frequencies);
+          }
+
+          callback([this._computePercentage(metadata, docs.length), frequencies]);
+        }
+
+     });
    },
 
    /*

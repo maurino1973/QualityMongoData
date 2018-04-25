@@ -109,6 +109,10 @@ class Tab extends Component {
 
   constructor(props) {
     super(props);
+
+    this.state = {
+      disabled: false
+    };
   }
 
   renderHeader() {
@@ -125,7 +129,7 @@ class Tab extends Component {
 
   render() {
     return (
-      <div>
+      <div className={ this.state.disabled ? styles.disabled : {} }>
         <div className={styles.tabheader}>
           { this.renderHeader() }
         </div>
@@ -147,15 +151,12 @@ class MetricTab extends Tab
   constructor(props) {
     super(props);
 
-    this.state = {
-      options: this.props.options
-    };
+    this.state["options"] = this.props.options;
   }
 
   renderContent() {
     return (
       <div>
-        Test Metric
       </div>
     );
   }
