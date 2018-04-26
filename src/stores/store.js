@@ -685,12 +685,15 @@ class RegexMetricEngine extends MetricEngine
      this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
         var metadata = {};
+        var frequencies = {};
         var pkMap = new Map();
 
         for (var i = 0; i < docs.length; ++i) {
           var data = this._getDocumentMetadata(docs[i], metadata, pkMap);
           metadata = data[0];
           pkMap = data[1];
+          if(!useMapReduce)
+            frequencies = this._getDocumentFreqs(docs[i], frequencies);
         }
 
         metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
@@ -717,17 +720,14 @@ class RegexMetricEngine extends MetricEngine
                 };
         }
 
+        console.log(useMapReduce, frequencies);
+
         // TODO: Refactor this
         if (useMapReduce) {
           this._getDocumentFreqsMapReduce("", (result) => {
             callback([this._computePercentage(metadata, docs.length), result]);
           });
-        } else {
-          var frequencies = {};
-          for (var i = 0; i < docs.length; ++i) {
-            frequencies = this._getDocumentFreqs(docs[i], frequencies);
-          }
-
+        }else {
           callback([this._computePercentage(metadata, docs.length), frequencies]);
         }
 
