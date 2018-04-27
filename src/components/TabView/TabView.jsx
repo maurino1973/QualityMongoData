@@ -392,11 +392,11 @@ class PluginTabBar extends Component {
   _updateState(props) {
     this.tabs = [];
 
+    this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
     this.tabs.push(<DashBoard title="Dashboard" store={ props.store } metrics={ props.metrics }/>);
     for (var i in props.metrics) {
       this.tabs.push(props.metrics[i]);
     }
-    this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
   }
 }
 
