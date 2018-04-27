@@ -152,6 +152,7 @@ class MetricTab extends Tab
     super(props);
 
     this.state["options"] = this.props.options;
+    this.state["_currComputationState"] = "start";
   }
 
   renderContent() {
@@ -163,12 +164,31 @@ class MetricTab extends Tab
 
   renderFooter() {
     return (
-      <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
+      <div>
+        <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
+        {
+          this.state["_currComputationState"] == "computing" ?
+            <span>
+              Computing please wait...
+            </span>
+          : this.state["_currComputationState"] == "end" ?
+            <span>
+              Finished.
+            </span>
+            :
+            <span>
+            </span>
+        }
+      </div>
     );
   }
 
   _compute() {
-    this.props.compute(this.state.options);
+    this.setState({disabled: true, _currComputationState: "computing"});
+
+    this.props.compute(this.state.options, () => {
+      this.setState({disabled: false, _currComputationState: "end"});
+    });
   }
 }
 

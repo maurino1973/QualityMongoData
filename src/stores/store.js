@@ -667,7 +667,7 @@ class ConsistencyMetricEngine extends MetricEngine
     * @param {name} is the name of the chosen metric
     * @param {props} are custom data passed to the metric
     */
-   computeMetric(name, props) {
+   computeMetric(name, props, callback) {
      console.assert(name in this.state._metricEngine);
 
      var docs = this.state._docs;
@@ -683,6 +683,8 @@ class ConsistencyMetricEngine extends MetricEngine
      });
 
      this._computeGlobalScore(newMetrics, newWeights);
+
+     callback();   //NOTE: end of computation
    },
 
    changeWeights(weights) {
