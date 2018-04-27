@@ -147,13 +147,13 @@ class RegexMetricEngine extends MetricEngine
           if(path.length == 1){
             if (RegExp(this.state.options["regex"]).test(docs[i][key]))
               score += 1;
+            numAttr += 1;
             }else{
               var match = this.checkMatching(docs[i][key], path.slice(1), this.state.options["regex"]);
               if(match[0])
                 score += 1;
               numAttr += parseInt(match[1]);
             }
-            numAttr += 1;
           }
         }
       }
