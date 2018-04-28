@@ -29,6 +29,79 @@ class CompletenessMetricTab extends MetricTab {
   }
 }
 
+class AttributeCompletenessMetricTab extends MetricTab {
+  static displayName = 'AttributeCompletenessMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    var opt = this.state.options;
+
+    for (var key in opt)
+      opt[key] = "0";
+
+    this.keys = [];
+
+    var docs = this.props.docs;
+
+    for(var i = 0; i<docs.length; i++){
+      for (var key in docs[i]){
+        if(this.keys.indexOf(key) === -1){
+          opt[key] = "1";
+          this.keys.push(key);
+        }
+      }
+    }
+
+    this.setState({options : opt});
+
+    this.changeAttr = this.changeAttr.bind(this);
+  }
+
+  changeAttr(evt){
+    var opt = this.state.options;
+    var attrMod = evt.target.name.toString().substring(9, evt.target.name.lenght);
+    opt[attrMod] = evt.target.value;
+    this.setState({options: opt});
+    var id = "attrMetr_"+attrMod;
+    document.getElementById(id).innerHTML = evt.target.value;
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          The attribute completeness metric allows you to score the completness on the attributes in wich you are interested.
+        </p>
+        <p>
+          Also, it allows you to weight the attributes however you want.
+        </p>
+        <p>
+          The score would be low if the attributes that you choosed are used sparingly across the documents.
+          On opposite it would be high if they are frequently present.
+        </p>
+        <p>
+          Below you could weigh the attribute to analyze (if the weight of an attribute is 0 it will not be considered).
+        </p><p>
+          <table>
+          {
+            this.keys.map((key) => {
+              return (
+                <tr>
+                  <td><b>{key.toString()}</b></td>
+                  <td><input type="range" name={"attrMetr_"+key.toString()} step="0.01" min="0.0" max="1.0" onChange={this.changeAttr}/></td>
+                  <td><p id={"attrMetr_"+key.toString()}>1</p></td>
+                </tr>
+                );
+              })
+          }
+          </table>
+        </p>
+      </div>
+    );
+  }
+}
+
 class CandidatePkMetricTab extends MetricTab{
 
   static displayName = 'CandidatePkMetricTab';
@@ -63,19 +136,17 @@ class RegexMetricTab extends MetricTab{
                     for(var i = 0; i<docs.length; i++){
                       for (var key in docs[i]){
                         if(meta.indexOf(key) === -1){
-                          if(!(docs[i][key] instanceof Array) && typeof docs[i][key] == "object" && key != "_id"){
+                          if(!(docs[i][key] instanceof Array) && typeof docs[i][key] == "object" && key != "_id")
                             meta = ricFun(meta, docs[i][key], key, ricFun);
-                          }else{
-                            meta.push(key);
-                          }
+                          meta.push(key);
                         }
                       }
                     }
                     return meta;
                   })(this.props.docs, this.analyzeObject);
-    console.log(this.keys);
     var opt = this.state.options;
     opt["path"] = this.keys[0];
+    opt["regex"] = "";
     this.setState({options: opt});
     this.changeAttr = this.changeAttr.bind(this);
     this.changeExpr = this.changeExpr.bind(this);
@@ -95,7 +166,6 @@ class RegexMetricTab extends MetricTab{
 
   changeAttr(evt) {
     var newPath = evt.target.options[evt.target.selectedIndex].value;
-    console.log("changed", newPath);
     var opt = this.state.options;
     opt["path"] = newPath;
     this.setState({options: opt});
@@ -234,7 +304,8 @@ class Quality extends Component {
     //NOTE: Format is <EngineName>: [<ComponentTab>, <TabName>]
     //TODO: Place this in ctor
     var metricCompMap = {
-      "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
+      "CompletenessMetric": [CompletenessMetricTab, "Global Completeness"],
+      "AttributeCompletenessMetric": [AttributeCompletenessMetricTab, "Attribute Completeness"],
       "CandidatePkMetric": [CandidatePkMetricTab, "Candidate Primary Key"],
       "RegexMetric": [RegexMetricTab, "Regex Accuracy"]
     };

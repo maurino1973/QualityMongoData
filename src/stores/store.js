@@ -67,6 +67,49 @@ class CompletenessMetricEngine extends MetricEngine
   }
 }
 
+class AttributeCompletenessMetricEngine extends MetricEngine
+{
+  constructor() {
+    super();
+    this.state.options = {};
+  }
+
+  compute(docs, props) {
+
+    this.state.options = props;
+
+    var scores = {};
+
+    for(var k in props)
+      if(parseFloat(props[k]) > 0)
+        scores[k] = 0;
+
+    if(_.isEqual(scores, {}))
+      return 0.0;
+
+    for (var i in docs) {
+      for (var key in docs[i]) {
+        if (key in scores)
+          scores[key] += 1;
+      }
+    }
+
+    var tot = 0.0;
+    var weights = 0.0;
+
+    for(var i in scores){
+      tot += (scores[i] * props[i] / docs.length);
+      weights += parseFloat(props[i]);
+    }
+
+    if(weights == 0.0)
+      return 0.0;
+
+    return tot/weights;
+
+  }
+}
+
 class CandidatePkMetricEngine extends MetricEngine
 {
   constructor() {
@@ -288,6 +331,7 @@ class RegexMetricEngine extends MetricEngine
 	 getInitialState() {
      var metricEngines = {
        "CompletenessMetric": new CompletenessMetricEngine(),
+       "AttributeCompletenessMetric" : new AttributeCompletenessMetricEngine(),
        "CandidatePkMetric": new CandidatePkMetricEngine(),
        "RegexMetric": new RegexMetricEngine()
      };
@@ -362,7 +406,7 @@ class RegexMetricEngine extends MetricEngine
      };
 
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
-       this._calculateMetaData(docs, true, (data) => {
+       this._calculateMetaData(docs, false, (data) => {
          console.log("onQueryRequestFunct");
          this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
          this.setState({_docs : docs});
@@ -720,8 +764,6 @@ class RegexMetricEngine extends MetricEngine
                 };
         }
 
-        console.log(useMapReduce, frequencies);
-
         // TODO: Refactor this
         if (useMapReduce) {
           this._getDocumentFreqsMapReduce("", (result) => {
@@ -747,15 +789,15 @@ class RegexMetricEngine extends MetricEngine
      console.log("Collection Changed");
      this.setState(this.getInitialState());
      this.namespace = namespace;
-     this.dataService.find(namespace, {}, {}, (errors, docs) => {
-
-       this._calculateMetaData(docs, false, (data) => {
-         console.log("onCollectionChanged");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
-
-     });
+//      this.dataService.find(namespace, {}, {}, (errors, docs) => {
+//
+//        this._calculateMetaData(docs, false, (data) => {
+//          console.log("onCollectionChanged");
+//          this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
+//          this.setState({_docs : docs});
+//        });
+//
+//      });
    },
 
    //UTILS Javascript functions
