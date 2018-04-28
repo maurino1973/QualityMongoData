@@ -58,8 +58,8 @@ class Donut extends Component {
     const color = this._score2RGB(this.props.score);
     return (
       <div className={classnames(styles.donutContainer)}>
-        <span style={{"line-height": "90px"}}>
-          { (this.props.score * 100).toFixed(0) + "%"}
+        <span style={{"color": "#555", "font-weight": "bold", "line-height": "90px"}}>
+          { this.props.score == null ? "undefined" : (this.props.score * 100).toFixed(0) + "%"}
         </span>
         <span>
           {this.props.name}

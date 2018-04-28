@@ -597,8 +597,8 @@ class Quality extends Component {
                         score={engines[key]}
                         options={options}
                         docs={this.props._docs}
-                        compute={(props, callback) =>
-                          this.props.actions.computeMetric(key, props, callback)
+                        compute={(props, onComputationEnd, onComputationError) =>
+                          this.props.actions.computeMetric(key, props, onComputationEnd, onComputationError)
                         }/>
         );
       } else {

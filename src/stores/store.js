@@ -7,6 +7,16 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
 class MetricEngine
 {
+  static error = class {
+    constructor(errorMsg) {
+      this._errorMsg = errorMsg;
+    }
+
+    message() {
+      return this._errorMsg;
+    }
+  }
+
   constructor(dataService) {
     this.state = {
       options: {}
@@ -17,6 +27,7 @@ class MetricEngine
 
     this._dataService = dataService;
   }
+
   /**
    * This method compute your metric using information from documents
    * The method must return a number >= 0.0 and <= 1.0
@@ -38,7 +49,7 @@ class CompletenessMetricEngine extends MetricEngine
 
   compute(docs, props) {
     if (docs.length == 0) {
-      return 0.0;
+      return new MetricEngine.error("Collection is empty");
     }
 
     var occurrences = {};
@@ -51,6 +62,10 @@ class CompletenessMetricEngine extends MetricEngine
           occurrences[key] = 1;
         }
       }
+    }
+
+    if (Object.keys(occurrences).length == 0) {
+      return new MetricEngine.error("Documents are empty");
     }
 
     // Normalize data
@@ -285,11 +300,12 @@ class ConsistencyMetricEngine extends MetricEngine
 
     var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
     var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
-    var totalScore = null;
+    var totalScore = 0.0;
 
+    //TODO: There are some bugs here, not really clear when should make undefined score...
     if ((tableScore == null && this.state.options.tables.length > 0) ||
         (rulesScore == null && this.state.options.rules.length > 0)) {
-      return -1;
+      return new MetricEngine.error("Possibly non well-formed attributes matches");
     }
 
     if (tableScore == null) {
@@ -413,7 +429,7 @@ class ConsistencyMetricEngine extends MetricEngine
     if (attr_ante != null) {
       console.log("IF", attr_ante, ifop, ifvalue, ops[ifop](attr_ante, ifvalue));
       if (ops[ifop](attr_ante, ifvalue)) {
-        //NOTE: what happens if attr_cons exits but is equal to null??
+        //NOTE: what happens if attr_cons exist but is equal to null??
         if (true/*attr_cons != null*/) {
           console.log("THEN", attr_cons, thenop, thenvalue, ops[thenop](attr_cons, thenvalue));
           return ops[thenop](attr_cons, thenvalue);
@@ -703,7 +719,7 @@ class ConsistencyMetricEngine extends MetricEngine
     * @param {name} is the name of the chosen metric
     * @param {props} are custom data passed to the metric
     */
-   computeMetric(name, props, callback) {
+   computeMetric(name, props, onComputationEnd, onComputationError) {
      console.assert(name in this.state._metricEngine);
 
      var docs = this.state._docs;
@@ -711,16 +727,24 @@ class ConsistencyMetricEngine extends MetricEngine
 
      var newMetrics = _.clone(this.state.metrics);
      var newWeights = _.clone(this.state.weights);
-     newMetrics[name] = metricScore;
-     //Activate weights
-     newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
-     this.setState({metrics: newMetrics,
-                    weights: newWeights
-     });
+
+     if (metricScore instanceof MetricEngine.error) {
+       onComputationError(metricScore.message());
+
+       newMetrics[name] = null;
+       this.setState({metrics: newMetrics});
+
+     } else {
+       newMetrics[name] = metricScore;
+       //Activate weights
+       newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
+       this.setState({metrics: newMetrics,
+                      weights: newWeights
+       });
+     }
 
      this._computeGlobalScore(newMetrics, newWeights);
-
-     callback();   //NOTE: end of computation
+     onComputationEnd(!(metricScore instanceof MetricEngine.error));
    },
 
    changeWeights(weights) {
@@ -751,7 +775,9 @@ class ConsistencyMetricEngine extends MetricEngine
 
     var cScore = 0.0;
     for (var mName in metrics) {
-      cScore += metrics[mName] * absWeights[mName];
+      if (metrics[mName] != null) {
+        cScore += metrics[mName] * absWeights[mName];
+      }
     }
     this.setState({collectionScore: 100 * cScore});
   },

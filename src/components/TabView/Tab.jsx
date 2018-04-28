@@ -153,6 +153,8 @@ class MetricTab extends Tab
 
     this.state["options"] = this.props.options;
     this.state["_currComputationState"] = "start";
+    this.state["success"] = true;
+    this.state["errorMsg"] = "";
   }
 
   renderContent() {
@@ -171,13 +173,23 @@ class MetricTab extends Tab
             <span>
               Computing please wait...
             </span>
+          :
+            <span>
+            </span>
+        }
+
+        {
+          this.state["success"] == false ?
+            <div className={classnames(styles.alertbox, styles.error)}>
+              <span>error:</span>
+              { this.state["errorMsg"] }
+            </div>
           : this.state["_currComputationState"] == "end" ?
-            <span>
+            <div className={classnames(styles.alertbox, styles.success)}>
+              <span>success:</span>
               Finished.
-            </span>
-            :
-            <span>
-            </span>
+            </div>
+            : ""
         }
       </div>
     );
@@ -186,9 +198,22 @@ class MetricTab extends Tab
   _compute() {
     this.setState({disabled: true, _currComputationState: "computing"});
 
-    this.props.compute(this.state.options, () => {
-      this.setState({disabled: false, _currComputationState: "end"});
-    });
+
+    var onComputationEnd = (success) => {
+      this.setState({
+        disabled: false,
+        _currComputationState: "end",
+        success: success
+      });
+    };
+
+    var onComputationError = (msg) => {
+      this.setState({
+        errorMsg: msg
+      });
+    };
+
+    this.props.compute(this.state.options, onComputationEnd, onComputationError);
   }
 }
 
