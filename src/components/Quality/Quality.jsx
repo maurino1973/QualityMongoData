@@ -173,6 +173,7 @@ class ConsistencyMetricTab extends MetricTab {
     }
 
     this.keys = this.keys.sort();
+    this.state["_manualMode"] = true;
   }
 
   addTable() {
@@ -305,16 +306,35 @@ class ConsistencyMetricTab extends MetricTab {
     });
   }
 
+  renderHeader() {
+    return (
+      <form>
+        <fieldset>
+          <input type="radio"
+            name="mode"
+            value="manual"
+            onClick={() => {this.setState({_manualMode: true})}}
+            checked={this.state._manualMode}/> Manual
+          <input type="radio"
+            name="mode"
+            value="collection"
+            onClick={() => {this.setState({_manualMode: false})}}
+            checked={!this.state._manualMode}/> From collection
+        </fieldset>
+      </form>
+    );
+  }
+
   //TODO: Refactor
   renderContent() {
-    var canAddTableStyle = function(index, tabLen, canAddTable) {
-      if (index < tabLen - 1) {
-        return true;
-      }
-
-      return canAddTable;
+    if (this.state._manualMode) {
+      return this._renderManualModeContent();
     }
 
+    return this._renderFromCollectionModeContent();
+  }
+
+  _renderManualModeContent() {
     return (
       <div>
         <span>Truth tables:</span>
@@ -411,7 +431,7 @@ class ConsistencyMetricTab extends MetricTab {
                           );
                         })
                       }
-                      </select>
+                </select>
                 <input className={classnames(styles.inputRule)}
                       type="text"
                       value={curr["then"]["consequent"]}
@@ -425,6 +445,40 @@ class ConsistencyMetricTab extends MetricTab {
 
         </ol>
         <input type="button" onClick={this.addRule.bind(this)} value="Add rule"/>
+      </div>
+    );
+  }
+
+  _renderFromCollectionModeContent() {
+    //NOTE: select value={currvalue}
+    return (
+      <div>
+        <span>
+          [TODO] Description...
+        </span>
+
+        <br></br>
+
+        <span>Select collection</span>
+        <select
+                className={classnames(styles.select)}
+                onChange={(evt) => { }}>
+            {
+              Object.keys(this.state.options.collections).map((currDb, index1) => {
+                return (
+                  <optgroup label={currDb}>
+                    {
+                      this.state.options.collections[currDb].map((currCl, index2) => {
+                        return (
+                          <option value={currCl}>{currCl}</option>
+                        );
+                      })
+                    }
+                  </optgroup>
+                );
+              })
+            }
+        </select>
       </div>
     );
   }

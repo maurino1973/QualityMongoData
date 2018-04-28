@@ -7,13 +7,15 @@ const debug = require('debug')('mongodb-compass:stores:quality');
 
 class MetricEngine
 {
-  constructor() {
+  constructor(dataService) {
     this.state = {
       options: {}
     };
 
     this.getOptions = this.getOptions.bind(this);
     this.compute = this.compute.bind(this);
+
+    this._dataService = dataService;
   }
   /**
    * This method compute your metric using information from documents
@@ -30,8 +32,8 @@ class MetricEngine
 
 class CompletenessMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
   }
 
   compute(docs, props) {
@@ -69,8 +71,8 @@ class CompletenessMetricEngine extends MetricEngine
 
 class CandidatePkMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
   }
 
   compute(docs, props) {
@@ -120,8 +122,8 @@ class CandidatePkMetricEngine extends MetricEngine
 
 class RegexMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
 
     this.state.options = {"path" : "", "regex" : ""};
   }
@@ -185,8 +187,8 @@ class RegexMetricEngine extends MetricEngine
 
 class ConsistencyMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
 
     //NOTE: Refactor these. Move them out
     var equalOp = function(a, b) {
@@ -245,8 +247,25 @@ class ConsistencyMetricEngine extends MetricEngine
     this.state.options = {
       tables: [],
       rules: [],
-      op: Object.keys(this.operators)
+      op: Object.keys(this.operators),
+      collections: {}
     };
+
+    this._dataService.client.client.db("").admin().listDatabases((err, dbs) => {
+      for (var i = 0; i < dbs.databases.length; ++i) {
+        if (!dbs.databases[i].empty) {
+          this.state.options.collections[dbs.databases[i].name] = [];
+
+          var callback = function(dbname, err, colls) {
+            for (var j = 0; j < colls.length; ++j) {
+              this.state.options.collections[dbname].push(colls[j].collectionName);
+            }
+          }.bind(this, dbs.databases[i].name);
+
+          this._dataService.client.client.db(dbs.databases[i].name).collections(callback);
+        }
+      }
+    });
   }
 
   compute(docs, props) {
@@ -551,19 +570,36 @@ class ConsistencyMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
-     var metricEngines = {
-       "CompletenessMetric": new CompletenessMetricEngine(),
-       "CandidatePkMetric": new CandidatePkMetricEngine(),
-       "RegexMetric": new RegexMetricEngine(),
-       "ConsistencyMetric": new ConsistencyMetricEngine()
-     };
+     if (this.dataService != null) {
+        var metricEngines = {
+          "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
+          "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
+          "RegexMetric": new RegexMetricEngine(this.dataService),
+          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService)
+        };
 
-     var metrics = {};
-     var weights = {};
+        var metrics = {};
+        var weights = {};
 
-     for (var metricName in metricEngines) {
-       metrics[metricName] = 0.0;
-       weights[metricName] = 0.0;
+        for (var metricName in metricEngines) {
+          metrics[metricName] = 0.0;
+          weights[metricName] = 0.0;
+        }
+
+        return {
+          status: 'enabled',
+          database: '',
+          collections : [],
+          databases : [],
+          collectionsValues : {},
+          collectionValuesByKey: {},
+          collectionScore: 0,
+          _metricEngine: metricEngines,
+          metrics: metrics,
+          weights: weights,
+          freqs: [],
+          _docs: []
+        };
      }
 
      return {
@@ -574,11 +610,11 @@ class ConsistencyMetricEngine extends MetricEngine
        collectionsValues : {},
        collectionValuesByKey: {},
        collectionScore: 0,
-       _metricEngine: metricEngines,
-       metrics: metrics,
-       weights: weights,
+       _metricEngine: {},
+       metrics: {},
+       weights: {},
        freqs: [],
-       _docs: [],
+       _docs: []
      };
    },
 
