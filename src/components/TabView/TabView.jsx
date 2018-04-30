@@ -141,6 +141,23 @@ class ProfileTab extends Tab
   }
 
   renderContent() {
+
+    if (this.props.store.computingMetadata == true) {
+      return (
+        <span>
+        Computing... please wait...
+        </span>
+      );
+    } else {
+      if (this.props.store.collectionsValues.length == 0) {
+        return (
+          <span>
+          No keys found.
+          </span>
+        );
+      }
+    }
+
     return (
       <div>
         Shows documents profiling.
@@ -296,6 +313,7 @@ class ProfileTab extends Tab
     }
   }
 
+  //TODO: Refactor: move out the style
   _renderTypeLabels(types) {
     var typeStyle = function(type) {
       var tcolordict = {

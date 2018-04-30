@@ -5,6 +5,13 @@ import toNS from 'mongodb-ns';
 
 const debug = require('debug')('mongodb-compass:stores:quality');
 
+/*
+ * Base class for all metric engines.
+ * Override in your class the "compute" method
+ * To allow view components to send data to the engine,
+ * put your params into this.state.options (use setState).
+ */
+
 class MetricEngine
 {
   static error = class {
@@ -28,9 +35,19 @@ class MetricEngine
     this._dataService = dataService;
   }
 
+  getScore(docs, props) {
+    var score = this.compute(docs, props);
+
+    if ((!isNaN(score) && (score < 0.0 || score > 1.0)) ||
+        (isNaN(score) && !(score instanceof MetricEngine.error))) {
+      throw("Invalid score");
+    }
+  }
+
   /**
    * This method compute your metric using information from documents
-   * The method must return a number >= 0.0 and <= 1.0
+   * The method must return a number >= 0.0 and <= 1.0 or an instance of
+   * MetricEngine.error
    */
   compute(docs, props) {
     // Override me
@@ -79,6 +96,7 @@ class CompletenessMetricEngine extends MetricEngine
       score += occurrences[key]
     }
 
+    score /= 0.0;
     score /= Object.keys(occurrences).length;
     return score;
   }
@@ -607,6 +625,7 @@ class ConsistencyMetricEngine extends MetricEngine
           database: '',
           collections : [],
           databases : [],
+          computingMetadata: false,
           collectionsValues : {},
           collectionValuesByKey: {},
           collectionScore: 0,
@@ -623,6 +642,7 @@ class ConsistencyMetricEngine extends MetricEngine
        database: '',
        collections : [],
        databases : [],
+       computingMetadata: false,
        collectionsValues : {},
        collectionValuesByKey: {},
        collectionScore: 0,
@@ -657,11 +677,9 @@ class ConsistencyMetricEngine extends MetricEngine
    resetCollection() {
      this.setState(this.getInitialState());
      this.dataService.find(this.namespace, {}, {}, (errors, docs) => {
-       this._calculateMetaData(docs, false, (data) => {
-         console.log("Reset");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+
+       console.log("Reset");
+       this._updateMetaData(docs, false);
      });
    },
 
@@ -680,11 +698,8 @@ class ConsistencyMetricEngine extends MetricEngine
      };
 
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
-       this._calculateMetaData(docs, true, (data) => {
-         console.log("onQueryRequestFunct");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+       console.log("onQueryRequestFunct");
+       this._updateMetaData(docs, true);
      });
    },
 
@@ -705,11 +720,8 @@ class ConsistencyMetricEngine extends MetricEngine
            tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
         }
 
-         this._calculateMetaData(tmpValues, false, (data) => {
-           console.log("randomRequestFunct");
-           this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-           this.setState({_docs : tmpValues});
-         });
+        console.log("randomRequestFunct");
+        this._updateMetaData(tmpValues, false);
        });
      }
   },
@@ -723,10 +735,24 @@ class ConsistencyMetricEngine extends MetricEngine
      console.assert(name in this.state._metricEngine);
 
      var docs = this.state._docs;
-     var metricScore = this.state._metricEngine[name].compute(docs, props);
-
      var newMetrics = _.clone(this.state.metrics);
      var newWeights = _.clone(this.state.weights);
+
+     //TODO: Refactor: avoid code duplication.
+     try {
+       var metricScore = this.state._metricEngine[name].getScore(docs, props);
+     } catch (e) {
+       metricScore = new MetricEngine.error("An exception occurred, see console for more details.");
+       onComputationError(metricScore.message());
+
+       newMetrics[name] = null;
+       this.setState({metrics: newMetrics});
+
+       this._computeGlobalScore(newMetrics, newWeights);
+       onComputationEnd(!(metricScore instanceof MetricEngine.error));
+
+       throw(e);
+     }
 
      if (metricScore instanceof MetricEngine.error) {
        onComputationError(metricScore.message());
@@ -1079,12 +1105,25 @@ class ConsistencyMetricEngine extends MetricEngine
      this.namespace = namespace;
      this.dataService.find(namespace, {}, {}, (errors, docs) => {
 
-       this._calculateMetaData(docs, false, (data) => {
-         console.log("onCollectionChanged");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+       console.log("onCollectionChanged");
+       this._updateMetaData(docs, false);
+     });
+   },
 
+   _updateMetaData(docs, useMapReduce) {
+     this.setState({
+       computingMetadata:     true,
+       collectionsValues:     [],
+       collectionValuesByKey: []
+    });
+
+     this._calculateMetaData(docs, useMapReduce, (data) => {
+       this.setState({
+         collectionsValues:     data[0],
+         collectionValuesByKey: data[1],
+         _docs: docs,
+         computingMetadata: false
+       });
      });
    },
 
