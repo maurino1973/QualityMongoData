@@ -85,7 +85,7 @@ class CompletenessMetricEngine extends MetricEngine
 
   compute(docs, props, callback) {
     if (docs.length == 0) {
-      return new MetricEngine.error("Collection is empty");
+      callback(new MetricEngine.error("Collection is empty"));
     }
 
     var occurrences = {};
@@ -101,7 +101,7 @@ class CompletenessMetricEngine extends MetricEngine
     }
 
     if (Object.keys(occurrences).length == 0) {
-      return new MetricEngine.error("Documents are empty");
+      callback(new MetricEngine.error("Documents are empty"));
     }
 
     // Normalize data
