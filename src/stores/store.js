@@ -5,19 +5,68 @@ import toNS from 'mongodb-ns';
 
 const debug = require('debug')('mongodb-compass:stores:quality');
 
+/*
+ * Base class for all metric engines.
+ * Override in your class the "compute" method
+ * To allow view components to send data to the engine,
+ * put your params into this.state.options.
+ */
+
 class MetricEngine
 {
-  constructor() {
+  static error = class {
+    constructor(errorMsg) {
+      this._errorMsg = errorMsg;
+    }
+
+    message() {
+      return this._errorMsg;
+    }
+  }
+
+  constructor(dataService) {
     this.state = {
       options: {}
     };
 
     this.getOptions = this.getOptions.bind(this);
     this.compute = this.compute.bind(this);
+
+    this._dataService = dataService;
   }
+
+  getScore(docs, props, callback) {
+    try {
+      this.compute(docs, props, (score) => {
+        if ((!isNaN(score) && (score < 0.0 || score > 1.0)) ||
+            ( isNaN(score) && !(score instanceof MetricEngine.error)))
+        {
+          /*
+          callback({
+            error: "Invalid score",
+            result: null
+          });
+          */
+          throw("Invalid score");
+        }
+
+        callback({
+          error: "",
+          result: score
+        });
+      });
+    } catch (e) {
+      callback({
+        error: e,
+        result: null
+      });
+    }
+  }
+
   /**
    * This method compute your metric using information from documents
-   * The method must return a number >= 0.0 and <= 1.0
+   * The method must return a number >= 0.0 and <= 1.0 or an instance of
+   * MetricEngine.error
    */
   compute(docs, props) {
     // Override me
@@ -30,13 +79,13 @@ class MetricEngine
 
 class CompletenessMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     if (docs.length == 0) {
-      return 0.0;
+      return new MetricEngine.error("Collection is empty");
     }
 
     var occurrences = {};
@@ -51,6 +100,10 @@ class CompletenessMetricEngine extends MetricEngine
       }
     }
 
+    if (Object.keys(occurrences).length == 0) {
+      return new MetricEngine.error("Documents are empty");
+    }
+
     // Normalize data
     for (var key in occurrences) {
       occurrences[key] = occurrences[key] / docs.length;
@@ -63,17 +116,17 @@ class CompletenessMetricEngine extends MetricEngine
     }
 
     score /= Object.keys(occurrences).length;
-    return score;
+    callback(score);
   }
 }
 
 class CandidatePkMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
 
     var pkMap = new Map();
     var numKeys = 0;
@@ -114,30 +167,34 @@ class CandidatePkMetricEngine extends MetricEngine
     console.log("CPK metric", score, docs.length);
 
     score /= numKeys;
-    return score;
+    return callback(score);
   }
 }
 
 class RegexMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService) {
+    super(dataService);
 
     this.state.options = {"path" : "", "regex" : ""};
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     this.state.options = props;
 
-    if(!this.state.options["regex"])
-      return 0.0;
+    if(!this.state.options["regex"]) {
+      callback(0.0);
+      return;
+    }
 
     var path = this.state.options["path"].split('.');
 
     var numAttr = 0;
 
-    if(path.length <= 0)
-      return 0.0;
+    if(path.length <= 0) {
+      callback(0.0);
+      return;
+    }
 
     var score = 0.0;
 
@@ -158,12 +215,14 @@ class RegexMetricEngine extends MetricEngine
         }
       }
 
-      if(numAttr == 0)
-        return 0;
+      if(numAttr == 0) {
+        callback(0.0);
+        return;
+      }
 
       score /= numAttr;
 
-      return score;
+      callback(score);
     }
 
   checkMatching(obj, path, reg){
@@ -185,8 +244,8 @@ class RegexMetricEngine extends MetricEngine
 
 class ConsistencyMetricEngine extends MetricEngine
 {
-  constructor() {
-    super();
+  constructor(dataService, namespace) {
+    super(dataService);
 
     //NOTE: Refactor these. Move them out
     var equalOp = function(a, b) {
@@ -245,14 +304,91 @@ class ConsistencyMetricEngine extends MetricEngine
     this.state.options = {
       tables: [],
       rules: [],
-      op: Object.keys(this.operators)
+      op: Object.keys(this.operators),
+      collections: [],
+      manualMode: true,
+      externalCollection: ""
     };
+
+    this.namespace = namespace;
+
+    var callback = function(namespace, err, colls) {
+      for (var j = 0; j < colls.length; ++j) {
+        if (colls[j].collectionName != toNS(namespace).collection) {
+          this.state.options.collections.push(colls[j].collectionName);
+        }
+      }
+
+      this.state.options.collections = this.state.options.collections.sort();
+
+      if (this.state.options.collections.length > 0) {
+        this.state.options.externalCollection = this.state.options.collections[0];
+      }
+    }.bind(this, this.namespace);
+
+    this._dataService.client.client.db(toNS(this.namespace).database).collections(callback);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     this.state.options = props;
     console.log("Compute", this.state.options);
 
+    if (!this.state.options.manualMode) {
+      this._parseExternalCollection((result) => {
+        if (result == null) {
+          callback(this._compute(docs));
+          return;
+        }
+
+        callback(result);
+      });
+
+    } else {
+      callback(this._compute(docs));
+    }
+  }
+
+  _compute(docs) {
+    var tableScore = this._computeTablesScore(docs);
+    var rulesScore = this._computeRulesScore(docs);
+
+    const tablePartEmpty = this.state.options.tables.length == 0;
+    const rulePartEmpty = this.state.options.rules.length == 0;
+
+    if (tablePartEmpty && rulePartEmpty) {
+      return new MetricEngine.error("Set parameters first");
+    } else {
+      if (!tablePartEmpty && !rulePartEmpty) {
+        if (tableScore == null) {
+          return new MetricEngine.error("Invalid Truth tables");
+        }
+
+        if (rulesScore == null) {
+          return new MetricEngine.error("Invalid Business rules");
+        }
+
+        // Compute mean
+        return (tableScore + rulesScore) / 2.0;
+      } else {
+        if (tablePartEmpty) {
+          if (rulesScore == null) {
+            return new MetricEngine.error("Invalid Business rules");
+          }
+
+          return rulesScore;
+        } else if (rulePartEmpty) {
+          if (tableScore == null) {
+            return new MetricEngine.error("Invalid Truth tables");
+          }
+
+          return tableScore;
+        }
+      }
+    }
+  }
+
+  _computeTablesScore(docs) {
+    // Parse paths and tables
     var tpaths = [];
     var tcontent = [];
 
@@ -260,32 +396,9 @@ class ConsistencyMetricEngine extends MetricEngine
       tpaths.push(this._parsePath(this.state.options.tables[i].path));
       tcontent.push(this._parseTable(this.state.options.tables[i].content));
     }
-    console.assert (tpaths.length == tcontent.length);
+    console.assert(tpaths.length == tcontent.length);
 
-    //---------------------------------------------------------
-
-    var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
-    var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
-    var totalScore = null;
-
-    if ((tableScore == null && this.state.options.tables.length > 0) ||
-        (rulesScore == null && this.state.options.rules.length > 0)) {
-      return -1;
-    }
-
-    if (tableScore == null) {
-      totalScore = rulesScore;
-    } else if (rulesScore == null) {
-      totalScore = tableScore;
-    } else {
-      totalScore = (tableScore + rulesScore) / 2.0;
-    }
-
-    console.assert(totalScore >= 0.0 && totalScore <= 1.0);
-    return totalScore;
-  }
-
-  _computeTablesScore(tpaths, tcontent, docs) {
+    // Score algorithm
     var paths_scores = [];
     for (var i in tpaths) {
       var table_scores = [0, 0];  // count, match
@@ -330,10 +443,10 @@ class ConsistencyMetricEngine extends MetricEngine
     return mean / paths_scores.length;
   }
 
-  _computeRulesScore(rules, docs) {
+  _computeRulesScore(docs) {
     var total_scores = [];
-    for (var i in rules) {
-      var rule = rules[i];
+    for (var i in this.state.options.rules) {
+      var rule = this.state.options.rules[i];
 
       var ifpath    = this._parsePath(rule["if"]["antecedent"]);
       var ifop      = rule["if"]["op"];
@@ -394,7 +507,7 @@ class ConsistencyMetricEngine extends MetricEngine
     if (attr_ante != null) {
       console.log("IF", attr_ante, ifop, ifvalue, ops[ifop](attr_ante, ifvalue));
       if (ops[ifop](attr_ante, ifvalue)) {
-        //NOTE: what happens if attr_cons exits but is equal to null??
+        //NOTE: what happens if attr_cons exist but is equal to null??
         if (true/*attr_cons != null*/) {
           console.log("THEN", attr_cons, thenop, thenvalue, ops[thenop](attr_cons, thenvalue));
           return ops[thenop](attr_cons, thenvalue);
@@ -447,6 +560,47 @@ class ConsistencyMetricEngine extends MetricEngine
     }
 
     return currDoc;
+  }
+
+  _parseExternalCollection(onEndJobCallback) {
+    var collection = this.state.options.externalCollection;
+
+    this._dataService.find(toNS(this.namespace).database + "." + collection, {}, {}, (errors, docs) => {
+      if (errors != null) {
+        onEndJobCallback(new MetricEngine.error(errors.toString()));
+        return;
+      }
+
+      if (docs.length == 0) {
+        onEndJobCallback(new MetricEngine.error("Collection \'" + collection + "\' is empty"));
+        return;
+      }
+
+      if (docs.length > 1) {
+        onEndJobCallback(new MetricEngine.error("Collection contains more than one document"));
+        return;
+      }
+
+      this.state.options.tables = [];
+      for (var key in docs[0]) {
+        if (key != "_id") {
+
+          if (!(docs[0][key] instanceof Array)) {
+            onEndJobCallback(new MetricEngine.error("Non well-formed collection schema (key \'" + key + "\' attribute must be array)"));
+            return;
+          }
+
+          var tableContent = docs[0][key].join("\n");
+
+          this.state.options.tables.push({
+            path: key,
+            content: tableContent
+          });
+        }
+      }
+
+      onEndJobCallback(null);
+    });
   }
 }
 /**
@@ -551,19 +705,37 @@ class ConsistencyMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
-     var metricEngines = {
-       "CompletenessMetric": new CompletenessMetricEngine(),
-       "CandidatePkMetric": new CandidatePkMetricEngine(),
-       "RegexMetric": new RegexMetricEngine(),
-       "ConsistencyMetric": new ConsistencyMetricEngine()
-     };
+     if (this.dataService != null && this.namespace != null) {
+        var metricEngines = {
+          "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
+          "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
+          "RegexMetric": new RegexMetricEngine(this.dataService),
+          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace)
+        };
 
-     var metrics = {};
-     var weights = {};
+        var metrics = {};
+        var weights = {};
 
-     for (var metricName in metricEngines) {
-       metrics[metricName] = 0.0;
-       weights[metricName] = 0.0;
+        for (var metricName in metricEngines) {
+          metrics[metricName] = 0.0;
+          weights[metricName] = 0.0;
+        }
+
+        return {
+          status: 'enabled',
+          database: '',
+          collections : [],
+          databases : [],
+          computingMetadata: false,
+          collectionsValues : {},
+          collectionValuesByKey: {},
+          collectionScore: 0,
+          _metricEngine: metricEngines,
+          metrics: metrics,
+          weights: weights,
+          freqs: [],
+          _docs: []
+        };
      }
 
      return {
@@ -571,14 +743,15 @@ class ConsistencyMetricEngine extends MetricEngine
        database: '',
        collections : [],
        databases : [],
+       computingMetadata: false,
        collectionsValues : {},
        collectionValuesByKey: {},
        collectionScore: 0,
-       _metricEngine: metricEngines,
-       metrics: metrics,
-       weights: weights,
+       _metricEngine: {},
+       metrics: {},
+       weights: {},
        freqs: [],
-       _docs: [],
+       _docs: []
      };
    },
 
@@ -605,11 +778,9 @@ class ConsistencyMetricEngine extends MetricEngine
    resetCollection() {
      this.setState(this.getInitialState());
      this.dataService.find(this.namespace, {}, {}, (errors, docs) => {
-       this._calculateMetaData(docs, false, (data) => {
-         console.log("Reset");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+
+       console.log("Reset");
+       this._updateMetaData(docs, false);
      });
    },
 
@@ -628,11 +799,8 @@ class ConsistencyMetricEngine extends MetricEngine
      };
 
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
-       this._calculateMetaData(docs, true, (data) => {
-         console.log("onQueryRequestFunct");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+       console.log("onQueryRequestFunct");
+       this._updateMetaData(docs, true);
      });
    },
 
@@ -653,11 +821,8 @@ class ConsistencyMetricEngine extends MetricEngine
            tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
         }
 
-         this._calculateMetaData(tmpValues, false, (data) => {
-           console.log("randomRequestFunct");
-           this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-           this.setState({_docs : tmpValues});
-         });
+        console.log("randomRequestFunct");
+        this._updateMetaData(tmpValues, false);
        });
      }
   },
@@ -667,22 +832,77 @@ class ConsistencyMetricEngine extends MetricEngine
     * @param {name} is the name of the chosen metric
     * @param {props} are custom data passed to the metric
     */
-   computeMetric(name, props) {
+   computeMetric(name, props, onComputationEnd, onComputationError) {
      console.assert(name in this.state._metricEngine);
 
      var docs = this.state._docs;
-     var metricScore = this.state._metricEngine[name].compute(docs, props);
-
      var newMetrics = _.clone(this.state.metrics);
      var newWeights = _.clone(this.state.weights);
-     newMetrics[name] = metricScore;
-     //Activate weights
-     newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
-     this.setState({metrics: newMetrics,
-                    weights: newWeights
+
+     //TODO: Refactor: avoid code duplication.
+     this.state._metricEngine[name].getScore(docs, props, (result) => {
+       if (result.result == null) {
+         onComputationError("An exception occurred, see console for more details.");
+         newMetrics[name] = null;
+         this.setState({metrics: newMetrics});
+
+         this._computeGlobalScore(newMetrics, newWeights);
+         onComputationEnd(false);
+
+         throw(result.error);
+       } else {
+         if (result.result instanceof MetricEngine.error) {
+           onComputationError(result.result.message());
+
+           newMetrics[name] = null;
+           this.setState({metrics: newMetrics});
+
+         } else {
+           newMetrics[name] = result.result;
+           //Activate weights
+           newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
+           this.setState({metrics: newMetrics,
+                          weights: newWeights
+           });
+         }
+
+         this._computeGlobalScore(newMetrics, newWeights);
+         onComputationEnd(!(result.result instanceof MetricEngine.error));
+       }
      });
 
+     /*
+       metricScore = new MetricEngine.error("An exception occurred, see console for more details.");
+       onComputationError(metricScore.message());
+
+       newMetrics[name] = null;
+       this.setState({metrics: newMetrics});
+
+       this._computeGlobalScore(newMetrics, newWeights);
+       onComputationEnd(!(metricScore instanceof MetricEngine.error));
+
+       throw(e);
+     */
+
+     /*
+     if (metricScore instanceof MetricEngine.error) {
+       onComputationError(metricScore.message());
+
+       newMetrics[name] = null;
+       this.setState({metrics: newMetrics});
+
+     } else {
+       newMetrics[name] = metricScore;
+       //Activate weights
+       newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
+       this.setState({metrics: newMetrics,
+                      weights: newWeights
+       });
+     }
+
      this._computeGlobalScore(newMetrics, newWeights);
+     onComputationEnd(!(metricScore instanceof MetricEngine.error));
+     */
    },
 
    changeWeights(weights) {
@@ -713,7 +933,9 @@ class ConsistencyMetricEngine extends MetricEngine
 
     var cScore = 0.0;
     for (var mName in metrics) {
-      cScore += metrics[mName] * absWeights[mName];
+      if (metrics[mName] != null) {
+        cScore += metrics[mName] * absWeights[mName];
+      }
     }
     this.setState({collectionScore: 100 * cScore});
   },
@@ -1015,12 +1237,25 @@ class ConsistencyMetricEngine extends MetricEngine
      this.namespace = namespace;
      this.dataService.find(namespace, {}, {}, (errors, docs) => {
 
-       this._calculateMetaData(docs, false, (data) => {
-         console.log("onCollectionChanged");
-         this.setState({collectionsValues: data[0], collectionValuesByKey: data[1]});
-         this.setState({_docs : docs});
-       });
+       console.log("onCollectionChanged");
+       this._updateMetaData(docs, false);
+     });
+   },
 
+   _updateMetaData(docs, useMapReduce) {
+     this.setState({
+       computingMetadata:     true,
+       collectionsValues:     [],
+       collectionValuesByKey: []
+    });
+
+     this._calculateMetaData(docs, useMapReduce, (data) => {
+       this.setState({
+         collectionsValues:     data[0],
+         collectionValuesByKey: data[1],
+         _docs: docs,
+         computingMetadata: false
+       });
      });
    },
 

@@ -305,16 +305,52 @@ class ConsistencyMetricTab extends MetricTab {
     });
   }
 
-  //TODO: Refactor
-  renderContent() {
-    var canAddTableStyle = function(index, tabLen, canAddTable) {
-      if (index < tabLen - 1) {
-        return true;
-      }
+  onModeChange(manual) {
+    var opt = this.state.options;
 
-      return canAddTable;
+    opt.manualMode = manual;
+    this.setState({
+      options: opt
+    });
+  }
+
+  onExternalCollectionChange(evt) {
+    var opt = this.state.options;
+
+    opt.externalCollection = evt.target.value;
+    this.setState({
+      options: opt
+    });
+  }
+
+  renderHeader() {
+    return (
+      <form>
+        <fieldset>
+          <input type="radio"
+            name="mode"
+            value="manual"
+            onClick={() => { this.onModeChange(true) }}
+            checked={ this.state.options.manualMode }/> Manual
+          <input type="radio"
+            name="mode"
+            value="collection"
+            onClick={() => { this.onModeChange(false) }}
+            checked={ !this.state.options.manualMode }/> From collection
+        </fieldset>
+      </form>
+    );
+  }
+
+  renderContent() {
+    if (this.state.options.manualMode) {
+      return this._renderManualModeContent();
     }
 
+    return this._renderFromCollectionModeContent();
+  }
+
+  _renderManualModeContent() {
     return (
       <div>
         <span>Truth tables:</span>
@@ -411,7 +447,7 @@ class ConsistencyMetricTab extends MetricTab {
                           );
                         })
                       }
-                      </select>
+                </select>
                 <input className={classnames(styles.inputRule)}
                       type="text"
                       value={curr["then"]["consequent"]}
@@ -425,6 +461,34 @@ class ConsistencyMetricTab extends MetricTab {
 
         </ol>
         <input type="button" onClick={this.addRule.bind(this)} value="Add rule"/>
+      </div>
+    );
+  }
+
+  _renderFromCollectionModeContent() {
+    return (
+      <div>
+        <div>
+          Load truth tables and business rules from an other collection.
+          [TODO]
+        </div>
+
+        <br></br>
+
+        <span>Select collection</span>
+        <select
+                value={ this.state.options.externalCollection }
+                className={classnames(styles.select)}
+                onChange={(evt) => { this.onExternalCollectionChange(evt) }}>
+
+                {
+                  this.state.options.collections.map((currCl, index2) => {
+                    return (
+                      <option value={currCl}>{currCl}</option>
+                    );
+                  })
+                }
+        </select>
       </div>
     );
   }
@@ -543,8 +607,8 @@ class Quality extends Component {
                         score={engines[key]}
                         options={options}
                         docs={this.props._docs}
-                        compute={(props) =>
-                          this.props.actions.computeMetric(key, props)
+                        compute={(props, onComputationEnd, onComputationError) =>
+                          this.props.actions.computeMetric(key, props, onComputationEnd, onComputationError)
                         }/>
         );
       } else {
