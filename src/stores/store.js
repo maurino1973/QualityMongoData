@@ -35,15 +35,32 @@ class MetricEngine
     this._dataService = dataService;
   }
 
-  getScore(docs, props) {
-    var score = this.compute(docs, props);
+  getScore(docs, props, callback) {
+    try {
+      this.compute(docs, props, (score) => {
+        if ((!isNaN(score) && (score < 0.0 || score > 1.0)) ||
+            ( isNaN(score) && !(score instanceof MetricEngine.error)))
+        {
+          /*
+          callback({
+            error: "Invalid score",
+            result: null
+          });
+          */
+          throw("Invalid score");
+        }
 
-    if ((!isNaN(score) && (score < 0.0 || score > 1.0)) ||
-        (isNaN(score) && !(score instanceof MetricEngine.error))) {
-      throw("Invalid score");
+        callback({
+          error: "",
+          result: score
+        });
+      });
+    } catch (e) {
+      callback({
+        error: e,
+        result: null
+      });
     }
-
-    return score;
   }
 
   /**
@@ -66,7 +83,7 @@ class CompletenessMetricEngine extends MetricEngine
     super(dataService);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     if (docs.length == 0) {
       return new MetricEngine.error("Collection is empty");
     }
@@ -99,7 +116,7 @@ class CompletenessMetricEngine extends MetricEngine
     }
 
     score /= Object.keys(occurrences).length;
-    return score;
+    callback(score);
   }
 }
 
@@ -109,7 +126,7 @@ class CandidatePkMetricEngine extends MetricEngine
     super(dataService);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
 
     var pkMap = new Map();
     var numKeys = 0;
@@ -150,7 +167,7 @@ class CandidatePkMetricEngine extends MetricEngine
     console.log("CPK metric", score, docs.length);
 
     score /= numKeys;
-    return score;
+    return callback(score);
   }
 }
 
@@ -162,18 +179,22 @@ class RegexMetricEngine extends MetricEngine
     this.state.options = {"path" : "", "regex" : ""};
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     this.state.options = props;
 
-    if(!this.state.options["regex"])
-      return 0.0;
+    if(!this.state.options["regex"]) {
+      callback(0.0);
+      return;
+    }
 
     var path = this.state.options["path"].split('.');
 
     var numAttr = 0;
 
-    if(path.length <= 0)
-      return 0.0;
+    if(path.length <= 0) {
+      callback(0.0);
+      return;
+    }
 
     var score = 0.0;
 
@@ -194,12 +215,14 @@ class RegexMetricEngine extends MetricEngine
         }
       }
 
-      if(numAttr == 0)
-        return 0;
+      if(numAttr == 0) {
+        callback(0.0);
+        return;
+      }
 
       score /= numAttr;
 
-      return score;
+      callback(score);
     }
 
   checkMatching(obj, path, reg){
@@ -306,38 +329,22 @@ class ConsistencyMetricEngine extends MetricEngine
     this._dataService.client.client.db(toNS(this.namespace).database).collections(callback);
   }
 
-  compute(docs, props) {
+  compute(docs, props, callback) {
     this.state.options = props;
     console.log("Compute", this.state.options);
 
     if (!this.state.options.manualMode) {
-
-      //NOTE: A terrible hack: I wait until the async call finish.
-      //      A better solution would be to switch to a different class design.
-      var is_finished = false;
-      var res;
-
       this._parseExternalCollection((result) => {
-        is_finished = true;
-        res = result;
+        if (result == null) {
+          callback(this._compute(docs));
+          return;
+        }
+
+        callback(result);
       });
 
-      // timeout in 30 seconds
-      var timeout = (new Date()).getTime() + 30000;
-      while ( !is_finished ) {
-        if ( (new Date()).getTime() >= timeout ) {
-          return 0.0;
-        }
-      }
-
-      if (res == null) {
-        return this._compute(docs);
-      }
-
-      return res;
-
     } else {
-      return this._compute(docs);
+      callback(this._compute(docs));
     }
   }
 
@@ -569,11 +576,17 @@ class ConsistencyMetricEngine extends MetricEngine
         return;
       }
 
+      if (docs.length > 1) {
+        onEndJobCallback(new MetricEngine.error("Collection contains more than one document"));
+        return;
+      }
+
+      this.state.options.tables = [];
       for (var key in docs[0]) {
         if (key != "_id") {
 
-          if (typeof docs[0][key] != Array) {
-            onEndJobCallback(new MetricEngine.error("Non well-formed collection schema (key attributes must be arrays)"));
+          if (!(docs[0][key] instanceof Array)) {
+            onEndJobCallback(new MetricEngine.error("Non well-formed collection schema (key \'" + key + "\' attribute must be array)"));
             return;
           }
 
@@ -827,9 +840,38 @@ class ConsistencyMetricEngine extends MetricEngine
      var newWeights = _.clone(this.state.weights);
 
      //TODO: Refactor: avoid code duplication.
-     try {
-       var metricScore = this.state._metricEngine[name].getScore(docs, props);
-     } catch (e) {
+     this.state._metricEngine[name].getScore(docs, props, (result) => {
+       if (result.result == null) {
+         onComputationError("An exception occurred, see console for more details.");
+         newMetrics[name] = null;
+         this.setState({metrics: newMetrics});
+
+         this._computeGlobalScore(newMetrics, newWeights);
+         onComputationEnd(false);
+
+         throw(result.error);
+       } else {
+         if (result.result instanceof MetricEngine.error) {
+           onComputationError(result.result.message());
+
+           newMetrics[name] = null;
+           this.setState({metrics: newMetrics});
+
+         } else {
+           newMetrics[name] = result.result;
+           //Activate weights
+           newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
+           this.setState({metrics: newMetrics,
+                          weights: newWeights
+           });
+         }
+
+         this._computeGlobalScore(newMetrics, newWeights);
+         onComputationEnd(!(result.result instanceof MetricEngine.error));
+       }
+     });
+
+     /*
        metricScore = new MetricEngine.error("An exception occurred, see console for more details.");
        onComputationError(metricScore.message());
 
@@ -840,8 +882,9 @@ class ConsistencyMetricEngine extends MetricEngine
        onComputationEnd(!(metricScore instanceof MetricEngine.error));
 
        throw(e);
-     }
+     */
 
+     /*
      if (metricScore instanceof MetricEngine.error) {
        onComputationError(metricScore.message());
 
@@ -859,6 +902,7 @@ class ConsistencyMetricEngine extends MetricEngine
 
      this._computeGlobalScore(newMetrics, newWeights);
      onComputationEnd(!(metricScore instanceof MetricEngine.error));
+     */
    },
 
    changeWeights(weights) {
