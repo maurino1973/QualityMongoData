@@ -173,7 +173,6 @@ class ConsistencyMetricTab extends MetricTab {
     }
 
     this.keys = this.keys.sort();
-    this.state["_manualMode"] = true;
   }
 
   addTable() {
@@ -306,6 +305,24 @@ class ConsistencyMetricTab extends MetricTab {
     });
   }
 
+  onModeChange(manual) {
+    var opt = this.state.options;
+
+    opt.manualMode = manual;
+    this.setState({
+      options: opt
+    });
+  }
+
+  onExternalCollectionChange(evt) {
+    var opt = this.state.options;
+
+    opt.externalCollection = evt.target.value;
+    this.setState({
+      options: opt
+    });
+  }
+
   renderHeader() {
     return (
       <form>
@@ -313,21 +330,20 @@ class ConsistencyMetricTab extends MetricTab {
           <input type="radio"
             name="mode"
             value="manual"
-            onClick={() => {this.setState({_manualMode: true})}}
-            checked={this.state._manualMode}/> Manual
+            onClick={() => { this.onModeChange(true) }}
+            checked={ this.state.options.manualMode }/> Manual
           <input type="radio"
             name="mode"
             value="collection"
-            onClick={() => {this.setState({_manualMode: false})}}
-            checked={!this.state._manualMode}/> From collection
+            onClick={() => { this.onModeChange(false) }}
+            checked={ !this.state.options.manualMode }/> From collection
         </fieldset>
       </form>
     );
   }
 
-  //TODO: Refactor
   renderContent() {
-    if (this.state._manualMode) {
+    if (this.state.options.manualMode) {
       return this._renderManualModeContent();
     }
 
@@ -450,34 +466,28 @@ class ConsistencyMetricTab extends MetricTab {
   }
 
   _renderFromCollectionModeContent() {
-    //NOTE: select value={currvalue}
     return (
       <div>
-        <span>
-          [TODO] Description...
-        </span>
+        <div>
+          Load truth tables and business rules from an other collection.
+          [TODO]
+        </div>
 
         <br></br>
 
         <span>Select collection</span>
         <select
+                value={ this.state.options.externalCollection }
                 className={classnames(styles.select)}
-                onChange={(evt) => { }}>
-            {
-              Object.keys(this.state.options.collections).map((currDb, index1) => {
-                return (
-                  <optgroup label={currDb}>
-                    {
-                      this.state.options.collections[currDb].map((currCl, index2) => {
-                        return (
-                          <option value={currCl}>{currCl}</option>
-                        );
-                      })
-                    }
-                  </optgroup>
-                );
-              })
-            }
+                onChange={(evt) => { this.onExternalCollectionChange(evt) }}>
+
+                {
+                  this.state.options.collections.map((currCl, index2) => {
+                    return (
+                      <option value={currCl}>{currCl}</option>
+                    );
+                  })
+                }
         </select>
       </div>
     );

@@ -221,7 +221,7 @@ class RegexMetricEngine extends MetricEngine
 
 class ConsistencyMetricEngine extends MetricEngine
 {
-  constructor(dataService) {
+  constructor(dataService, namespace) {
     super(dataService);
 
     //NOTE: Refactor these. Move them out
@@ -282,32 +282,66 @@ class ConsistencyMetricEngine extends MetricEngine
       tables: [],
       rules: [],
       op: Object.keys(this.operators),
-      collections: {}
+      collections: [],
+      manualMode: true,
+      externalCollection: ""
     };
 
-    this._dataService.client.client.db("").admin().listDatabases((err, dbs) => {
-      for (var i = 0; i < dbs.databases.length; ++i) {
-        if (!dbs.databases[i].empty) {
-          this.state.options.collections[dbs.databases[i].name] = [];
+    this.namespace = namespace;
 
-          var callback = function(dbname, err, colls) {
-            for (var j = 0; j < colls.length; ++j) {
-              this.state.options.collections[dbname].push(colls[j].collectionName);
-            }
-          }.bind(this, dbs.databases[i].name);
-
-          this._dataService.client.client.db(dbs.databases[i].name).collections(callback);
+    var callback = function(namespace, err, colls) {
+      for (var j = 0; j < colls.length; ++j) {
+        if (colls[j].collectionName != toNS(namespace).collection) {
+          this.state.options.collections.push(colls[j].collectionName);
         }
       }
-    });
+
+      this.state.options.collections = this.state.options.collections.sort();
+
+      if (this.state.options.collections.length > 0) {
+        this.state.options.externalCollection = this.state.options.collections[0];
+      }
+    }.bind(this, this.namespace);
+
+    this._dataService.client.client.db(toNS(this.namespace).database).collections(callback);
   }
 
   compute(docs, props) {
     this.state.options = props;
     console.log("Compute", this.state.options);
 
-    //---------------------------------------------------------
+    if (!this.state.options.manualMode) {
 
+      //NOTE: A terrible hack: I wait until the async call finish.
+      //      A better solution would be to switch to a different class design.
+      var is_finished = false;
+      var res;
+
+      this._parseExternalCollection((result) => {
+        is_finished = true;
+        res = result;
+      });
+
+      // timeout in 30 seconds
+      var timeout = (new Date()).getTime() + 30000;
+      while ( !is_finished ) {
+        if ( (new Date()).getTime() >= timeout ) {
+          return 0.0;
+        }
+      }
+
+      if (res == null) {
+        return this._compute(docs);
+      }
+
+      return res;
+
+    } else {
+      return this._compute(docs);
+    }
+  }
+
+  _compute(docs) {
     var tableScore = this._computeTablesScore(docs);
     var rulesScore = this._computeRulesScore(docs);
 
@@ -344,28 +378,6 @@ class ConsistencyMetricEngine extends MetricEngine
         }
       }
     }
-
-    /*
-    var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
-    var totalScore = 0.0;
-
-    //TODO: There are some bugs here, not really clear when should make undefined score...
-    if ((tableScore == null && this.state.options.tables.length > 0) ||
-        (rulesScore == null && this.state.options.rules.length > 0)) {
-      return new MetricEngine.error("Possibly non well-formed attributes matches");
-    }
-
-    if (tableScore == null) {
-      totalScore = rulesScore;
-    } else if (rulesScore == null) {
-      totalScore = tableScore;
-    } else {
-      totalScore = (tableScore + rulesScore) / 2.0;
-    }
-
-    console.assert(totalScore >= 0.0 && totalScore <= 1.0);
-    return totalScore;
-    */
   }
 
   _computeTablesScore(docs) {
@@ -542,6 +554,41 @@ class ConsistencyMetricEngine extends MetricEngine
 
     return currDoc;
   }
+
+  _parseExternalCollection(onEndJobCallback) {
+    var collection = this.state.options.externalCollection;
+
+    this._dataService.find(toNS(this.namespace).database + "." + collection, {}, {}, (errors, docs) => {
+      if (errors != null) {
+        onEndJobCallback(new MetricEngine.error(errors.toString()));
+        return;
+      }
+
+      if (docs.length == 0) {
+        onEndJobCallback(new MetricEngine.error("Collection \'" + collection + "\' is empty"));
+        return;
+      }
+
+      for (var key in docs[0]) {
+        if (key != "_id") {
+
+          if (typeof docs[0][key] != Array) {
+            onEndJobCallback(new MetricEngine.error("Non well-formed collection schema (key attributes must be arrays)"));
+            return;
+          }
+
+          var tableContent = docs[0][key].join("\n");
+
+          this.state.options.tables.push({
+            path: key,
+            content: tableContent
+          });
+        }
+      }
+
+      onEndJobCallback(null);
+    });
+  }
 }
 /**
  * Performance Plugin store.
@@ -645,12 +692,12 @@ class ConsistencyMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
-     if (this.dataService != null) {
+     if (this.dataService != null && this.namespace != null) {
         var metricEngines = {
           "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
           "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
           "RegexMetric": new RegexMetricEngine(this.dataService),
-          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService)
+          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace)
         };
 
         var metrics = {};
