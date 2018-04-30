@@ -9,7 +9,7 @@ const debug = require('debug')('mongodb-compass:stores:quality');
  * Base class for all metric engines.
  * Override in your class the "compute" method
  * To allow view components to send data to the engine,
- * put your params into this.state.options (use setState).
+ * put your params into this.state.options.
  */
 
 class MetricEngine
@@ -42,6 +42,8 @@ class MetricEngine
         (isNaN(score) && !(score instanceof MetricEngine.error))) {
       throw("Invalid score");
     }
+
+    return score;
   }
 
   /**
@@ -96,7 +98,6 @@ class CompletenessMetricEngine extends MetricEngine
       score += occurrences[key]
     }
 
-    score /= 0.0;
     score /= Object.keys(occurrences).length;
     return score;
   }
@@ -305,18 +306,46 @@ class ConsistencyMetricEngine extends MetricEngine
     this.state.options = props;
     console.log("Compute", this.state.options);
 
-    var tpaths = [];
-    var tcontent = [];
-
-    for (var i in this.state.options.tables) {
-      tpaths.push(this._parsePath(this.state.options.tables[i].path));
-      tcontent.push(this._parseTable(this.state.options.tables[i].content));
-    }
-    console.assert (tpaths.length == tcontent.length);
-
     //---------------------------------------------------------
 
-    var tableScore = this._computeTablesScore(tpaths, tcontent, docs);
+    var tableScore = this._computeTablesScore(docs);
+    var rulesScore = this._computeRulesScore(docs);
+
+    const tablePartEmpty = this.state.options.tables.length == 0;
+    const rulePartEmpty = this.state.options.rules.length == 0;
+
+    if (tablePartEmpty && rulePartEmpty) {
+      return new MetricEngine.error("Set parameters first");
+    } else {
+      if (!tablePartEmpty && !rulePartEmpty) {
+        if (tableScore == null) {
+          return new MetricEngine.error("Invalid Truth tables");
+        }
+
+        if (rulesScore == null) {
+          return new MetricEngine.error("Invalid Business rules");
+        }
+
+        // Compute mean
+        return (tableScore + rulesScore) / 2.0;
+      } else {
+        if (tablePartEmpty) {
+          if (rulesScore == null) {
+            return new MetricEngine.error("Invalid Business rules");
+          }
+
+          return rulesScore;
+        } else if (rulePartEmpty) {
+          if (tableScore == null) {
+            return new MetricEngine.error("Invalid Truth tables");
+          }
+
+          return tableScore;
+        }
+      }
+    }
+
+    /*
     var rulesScore = this._computeRulesScore(this.state.options.rules, docs);
     var totalScore = 0.0;
 
@@ -336,9 +365,21 @@ class ConsistencyMetricEngine extends MetricEngine
 
     console.assert(totalScore >= 0.0 && totalScore <= 1.0);
     return totalScore;
+    */
   }
 
-  _computeTablesScore(tpaths, tcontent, docs) {
+  _computeTablesScore(docs) {
+    // Parse paths and tables
+    var tpaths = [];
+    var tcontent = [];
+
+    for (var i in this.state.options.tables) {
+      tpaths.push(this._parsePath(this.state.options.tables[i].path));
+      tcontent.push(this._parseTable(this.state.options.tables[i].content));
+    }
+    console.assert(tpaths.length == tcontent.length);
+
+    // Score algorithm
     var paths_scores = [];
     for (var i in tpaths) {
       var table_scores = [0, 0];  // count, match
@@ -383,10 +424,10 @@ class ConsistencyMetricEngine extends MetricEngine
     return mean / paths_scores.length;
   }
 
-  _computeRulesScore(rules, docs) {
+  _computeRulesScore(docs) {
     var total_scores = [];
-    for (var i in rules) {
-      var rule = rules[i];
+    for (var i in this.state.options.rules) {
+      var rule = this.state.options.rules[i];
 
       var ifpath    = this._parsePath(rule["if"]["antecedent"]);
       var ifop      = rule["if"]["op"];
