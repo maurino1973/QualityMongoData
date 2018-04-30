@@ -109,6 +109,10 @@ class Tab extends Component {
 
   constructor(props) {
     super(props);
+
+    this.state = {
+      disabled: false
+    };
   }
 
   renderHeader() {
@@ -125,7 +129,7 @@ class Tab extends Component {
 
   render() {
     return (
-      <div>
+      <div className={ this.state.disabled ? styles.disabled : {} }>
         <div className={styles.tabheader}>
           { this.renderHeader() }
         </div>
@@ -147,27 +151,69 @@ class MetricTab extends Tab
   constructor(props) {
     super(props);
 
-    this.state = {
-      options: this.props.options
-    };
+    this.state["options"] = this.props.options;
+    this.state["_currComputationState"] = "start";
+    this.state["success"] = true;
+    this.state["errorMsg"] = "";
   }
 
   renderContent() {
     return (
       <div>
-        Test Metric
       </div>
     );
   }
 
   renderFooter() {
     return (
-      <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
+      <div>
+        <input type="button" onClick={this._compute.bind(this)} value="Compute"/>
+        {
+          this.state["_currComputationState"] == "computing" ?
+            <span>
+              Computing please wait...
+            </span>
+          :
+            <span>
+            </span>
+        }
+
+        {
+          this.state["success"] == false ?
+            <div className={classnames(styles.alertbox, styles.error)}>
+              <span>error:</span>
+              { this.state["errorMsg"] }
+            </div>
+          : this.state["_currComputationState"] == "end" ?
+            <div className={classnames(styles.alertbox, styles.success)}>
+              <span>success:</span>
+              Finished.
+            </div>
+            : ""
+        }
+      </div>
     );
   }
 
   _compute() {
-    this.props.compute(this.state.options);
+    this.setState({disabled: true, _currComputationState: "computing"});
+
+
+    var onComputationEnd = (success) => {
+      this.setState({
+        disabled: false,
+        _currComputationState: "end",
+        success: success
+      });
+    };
+
+    var onComputationError = (msg) => {
+      this.setState({
+        errorMsg: msg
+      });
+    };
+
+    this.props.compute(this.state.options, onComputationEnd, onComputationError);
   }
 }
 

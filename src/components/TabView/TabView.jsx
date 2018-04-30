@@ -58,8 +58,8 @@ class Donut extends Component {
     const color = this._score2RGB(this.props.score);
     return (
       <div className={classnames(styles.donutContainer)}>
-        <span style={{"line-height": "90px"}}>
-          { (this.props.score * 100).toFixed(0) + "%"}
+        <span style={{"color": "#555", "font-weight": "bold", "line-height": "90px"}}>
+          { this.props.score == null ? "undefined" : (this.props.score * 100).toFixed(0) + "%"}
         </span>
         <span>
           {this.props.name}
@@ -136,13 +136,28 @@ class ProfileTab extends Tab
     super(props);
     this._renderFigure = this._renderFigure.bind(this);
 
-    this.setState({
-      currFreqData: {},
-      currKey: ""
-    });
+    this.state["currFreqData"] = {};
+    this.state["currKey"] = "";
   }
 
   renderContent() {
+
+    if (this.props.store.computingMetadata == true) {
+      return (
+        <span>
+        Computing... please wait...
+        </span>
+      );
+    } else {
+      if (this.props.store.collectionsValues.length == 0) {
+        return (
+          <span>
+          No keys found.
+          </span>
+        );
+      }
+    }
+
     return (
       <div>
         Shows documents profiling.
@@ -167,7 +182,7 @@ class ProfileTab extends Tab
           <div style={ {background:'rgba(0,0,0,0)'} } className={ classnames(styles.rowscore) }></div>
           <div className="col-md-2"><b>Key</b></div>
           <div className="col-md-1"><b>Occurrences</b></div>
-          <div className="col-md-1"><b>Completness</b></div>
+          <div className="col-md-1"><b>Completeness</b></div>
           <div className="col-md-1"><b>Type</b></div>
           <div className="col-md-1"><b>MultipleTypes</b></div>
           <div className="col-md-1"><b>Closed World Assuption</b></div>
@@ -240,7 +255,7 @@ class ProfileTab extends Tab
 
   _renderFigure() {
     //NOTE: possible bug...
-    if (this.state) {
+    if (this.state && "values" in this.state.currFreqData) {
       // Sort frequencies...
       var pairs = Object.keys(this.state.currFreqData["values"]).map((key) => {
         return [key, this.state.currFreqData["values"][key]];
@@ -298,6 +313,7 @@ class ProfileTab extends Tab
     }
   }
 
+  //TODO: Refactor: move out the style
   _renderTypeLabels(types) {
     var typeStyle = function(type) {
       var tcolordict = {
@@ -394,11 +410,11 @@ class PluginTabBar extends Component {
   _updateState(props) {
     this.tabs = [];
 
+    this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
     this.tabs.push(<DashBoard title="Dashboard" store={ props.store } metrics={ props.metrics }/>);
     for (var i in props.metrics) {
       this.tabs.push(props.metrics[i]);
     }
-    this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
   }
 }
 
