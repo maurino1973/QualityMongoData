@@ -360,6 +360,7 @@ class ConsistencyMetricEngine extends MetricEngine
     } else {
       if (!tablePartEmpty && !rulePartEmpty) {
         if (tableScore == null) {
+          this.state.options.tables = [];
           return new MetricEngine.error("Invalid Truth tables");
         }
 
@@ -378,6 +379,7 @@ class ConsistencyMetricEngine extends MetricEngine
           return rulesScore;
         } else if (rulePartEmpty) {
           if (tableScore == null) {
+            this.state.options.tables = [];
             return new MetricEngine.error("Invalid Truth tables");
           }
 
