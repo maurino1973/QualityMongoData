@@ -707,6 +707,22 @@ class ConsistencyMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
+     var state = {
+       status: 'disabled',
+       collections : [],
+       databases : [],
+       computingMetadata: false,
+       collectionsValues : {},
+       collectionValuesByKey: {},
+       collectionScore: 0,
+       _metricEngine: {},
+       metrics: {},
+       weights: {},
+       freqs: [],
+       _docs: []
+     };
+
+
      if (this.dataService != null && this.namespace != null) {
         var metricEngines = {
           "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
@@ -723,38 +739,12 @@ class ConsistencyMetricEngine extends MetricEngine
           weights[metricName] = 0.0;
         }
 
-        return {
-          status: 'enabled',
-          database: '',
-          collections : [],
-          databases : [],
-          computingMetadata: false,
-          collectionsValues : {},
-          collectionValuesByKey: {},
-          collectionScore: 0,
-          _metricEngine: metricEngines,
-          metrics: metrics,
-          weights: weights,
-          freqs: [],
-          _docs: []
-        };
+        state._metricEngine = metricEngines;
+        state.metrics = metrics;
+        state.weights = weights;
      }
 
-     return {
-       status: 'enabled',
-       database: '',
-       collections : [],
-       databases : [],
-       computingMetadata: false,
-       collectionsValues : {},
-       collectionValuesByKey: {},
-       collectionScore: 0,
-       _metricEngine: {},
-       metrics: {},
-       weights: {},
-       freqs: [],
-       _docs: []
-     };
+     return state;
    },
 
    onQueryChanged(state) {
@@ -768,22 +758,10 @@ class ConsistencyMetricEngine extends MetricEngine
      }
      console.log("onQueryChanged");
    },
-	/**
-	 * handlers for each action defined in ../actions/index.jsx, for example:
-	 */
-	 toggleStatus() {
-	 	this.setState({
-	 		status: this.state.status === 'enabled' ? 'disabled' : 'enabled'
-	 	});
-	 },
 
    resetCollection() {
+     console.log("Reset");
      this.setState(this.getInitialState());
-     this.dataService.find(this.namespace, {}, {}, (errors, docs) => {
-
-       console.log("Reset");
-       this._updateMetaData(docs, false);
-     });
    },
 
    /*
@@ -792,7 +770,9 @@ class ConsistencyMetricEngine extends MetricEngine
    queryRequestFunct() {
      //this.onCollectionChanged(this.namespace);
      //TODO: Change position, see onCollectionChanged TODO
-     this.setState(this.getInitialState());
+     var state = this.getInitialState();
+     state.status = 'enabled';
+     this.setState(state);
      const findOptions = {
        sort: this.sort,
        fields: this.project,
@@ -806,13 +786,17 @@ class ConsistencyMetricEngine extends MetricEngine
      });
    },
 
-   randomRequestFunct(num){
+   randomRequestFunct(num) {
      var number = parseInt(num);
 
      //if the number inserted is less than zero or isn't a number or is bigger than the length of the collection
      //analyze all the collection
 
      if(!(isNaN(number) || number<=0)){
+       var state = this.getInitialState();
+       state.status = 'enabled';
+       this.setState(state);
+
        this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
          var tmpValues = [];
@@ -872,39 +856,6 @@ class ConsistencyMetricEngine extends MetricEngine
          onComputationEnd(!(result.result instanceof MetricEngine.error));
        }
      });
-
-     /*
-       metricScore = new MetricEngine.error("An exception occurred, see console for more details.");
-       onComputationError(metricScore.message());
-
-       newMetrics[name] = null;
-       this.setState({metrics: newMetrics});
-
-       this._computeGlobalScore(newMetrics, newWeights);
-       onComputationEnd(!(metricScore instanceof MetricEngine.error));
-
-       throw(e);
-     */
-
-     /*
-     if (metricScore instanceof MetricEngine.error) {
-       onComputationError(metricScore.message());
-
-       newMetrics[name] = null;
-       this.setState({metrics: newMetrics});
-
-     } else {
-       newMetrics[name] = metricScore;
-       //Activate weights
-       newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
-       this.setState({metrics: newMetrics,
-                      weights: newWeights
-       });
-     }
-
-     this._computeGlobalScore(newMetrics, newWeights);
-     onComputationEnd(!(metricScore instanceof MetricEngine.error));
-     */
    },
 
    changeWeights(weights) {
@@ -1229,19 +1180,15 @@ class ConsistencyMetricEngine extends MetricEngine
     */
    onDatabaseChanged(namespace){
      console.log("Database Changed");
-     this.setState(this.getInitialState());
+     this.namespace = namespace;
+     this.resetCollection();
    },
 
    //TODO: calculate on query submission or sampling
    onCollectionChanged(namespace) {
      console.log("Collection Changed");
-     this.setState(this.getInitialState());
      this.namespace = namespace;
-     this.dataService.find(namespace, {}, {}, (errors, docs) => {
-
-       console.log("onCollectionChanged");
-       this._updateMetaData(docs, false);
-     });
+     this.setState(this.getInitialState());
    },
 
    _updateMetaData(docs, useMapReduce) {
@@ -1290,7 +1237,6 @@ class ConsistencyMetricEngine extends MetricEngine
     * @param  {Object} prevState   previous state.
     */
    storeDidUpdate(prevState) {
-     console.log("Store Updated");
      debug('Quality store changed from', prevState, 'to', this.state);
    }
 });

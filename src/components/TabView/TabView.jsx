@@ -149,10 +149,10 @@ class ProfileTab extends Tab
         </span>
       );
     } else {
-      if (this.props.store.collectionsValues.length == 0) {
+      if (Object.keys(this.props.store.collectionsValues).length == 0) {
         return (
           <span>
-          No keys found.
+          Empty result set.
           </span>
         );
       }
@@ -396,7 +396,7 @@ class PluginTabBar extends Component {
     let activeTab = this.tabs[this.state.activeTab];
 
     return (
-      <div>
+      <div className={ !this.props.active ? styles.disabled : null }>
         <ul className={styles.tabbar}>
           { Object.keys(this.tabs).map(this.renderTabBar.bind(this)) }
         </ul>

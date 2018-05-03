@@ -589,6 +589,7 @@ class Quality extends Component {
           </div>
 
           <PluginTabBar
+            active={this.props.status == 'enabled'}
             store={this.props}
             metrics={this._makeMetricComponents(this.props.metrics)}>
           </PluginTabBar>
