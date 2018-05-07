@@ -63,8 +63,47 @@ class AttributeCompletenessMetricTab extends MetricTab {
     var attrMod = evt.target.name.toString().substring(9, evt.target.name.lenght);
     opt[attrMod] = evt.target.value;
     this.setState({options: opt});
+
+    var c = 0;
+
+    for(var i=0; i<this.keys.length; i++)
+      if(parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value) != 0.0 && this.keys[i] != attrMod)
+        c++;
+
     var id = "attrMetr_"+attrMod;
-    document.getElementById(id).innerHTML = evt.target.value;
+
+    if(c == 0){
+      if(parseFloat(evt.target.value) != 0.0)
+        document.getElementById(id).innerHTML = 100;
+      else
+        document.getElementById(id).innerHTML = 0;
+      return;
+    }
+
+    if(c == 1 && evt.target.value == 0.0){
+      for(var i=0; i<this.keys.length; i++)
+        if(parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value) != 0.0 && this.keys[i] != attrMod)
+          document.getElementById("attrMetr_"+this.keys[i]).innerHTML = 100;
+      return;
+    }
+
+    var notParsedVal = parseFloat(evt.target.value);
+    var parsedVal = Math.round((notParsedVal*100/(c+1)) * 10) / 10;
+    document.getElementById(id).innerHTML = parsedVal;
+
+    var each = (100.0 - parsedVal)/c;
+
+//     console.log(notParsedVal, parsedVal, each, c);
+
+    for(var i=0; i<this.keys.length; i++){
+
+      notParsedVal = parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value);
+
+      if(this.keys[i] != attrMod && notParsedVal != 0.0){
+        parsedVal = Math.round((notParsedVal*each) * 10) / 10;
+        document.getElementById("attrMetr_"+this.keys[i]).innerHTML = parsedVal;
+      }
+    }
   }
 
   renderContent() {
@@ -90,7 +129,8 @@ class AttributeCompletenessMetricTab extends MetricTab {
                 <tr>
                   <td><b>{key.toString()}</b></td>
                   <td><input type="range" name={"attrMetr_"+key.toString()} step="0.01" min="0.0" max="1.0" onChange={this.changeAttr}/></td>
-                  <td><p id={"attrMetr_"+key.toString()}>1</p></td>
+                  <td><p id={"attrMetr_"+key.toString()}>{Math.round((100.0/this.keys.length) * 10) / 10}</p></td>
+                  <td><p>%</p></td>
                 </tr>
                 );
               })
@@ -568,6 +608,49 @@ class ConsistencyMetricTab extends MetricTab {
   }
 }
 
+class CurrentnessMetricTab extends MetricTab{
+
+  static displayName = 'CurrentnessMetricTab';
+
+  constructor(props) {
+    super(props);
+    this.changeAttr = this.changeAttr.bind(this);
+  }
+
+  changeAttr(evt){
+    var opt = this.state.options;
+    opt = evt.target.value;
+    this.setState({options: opt});
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          You must choose a date and a time in order to measure the currentness of the <b>current collection</b>.
+        </p>
+        <p>
+          Only the documents added more recently than the chosen date will be considered.
+        </p>
+        <p>
+        You must insert both date and time, otherwise the result will be score with the current date and time as limit.
+        </p>
+        <p>
+          <input id="currentness-datetime" type="datetime-local" onChange={this.changeAttr}/>
+          &nbsp;&nbsp;&nbsp;(Be carefull, you are choosing the date with the current timezone offset).
+        </p>
+        <p>
+          The score would be high if the average date of insertion of documents is close to today's date.
+        </p>
+        <p>
+          Otherwise, the score would be low if the the average date of insertion of documents is close to the selected date.
+        </p>
+      </div>
+    );
+  }
+
+}
+
 class Quality extends Component {
   static displayName = 'QualityComponent';
   static propTypes = {
@@ -668,7 +751,8 @@ class Quality extends Component {
       "AttributeCompletenessMetric": [AttributeCompletenessMetricTab, "Attribute Completeness"],
       "CandidatePkMetric": [CandidatePkMetricTab, "Candidate Primary Key"],
       "RegexMetric": [RegexMetricTab, "Regex Accuracy"],
-      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"]
+      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"],
+      "CurrentnessMetric": [CurrentnessMetricTab, "Currentness"]
     };
 
     for (const key in engines) {

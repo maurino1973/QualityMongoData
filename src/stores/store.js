@@ -650,6 +650,55 @@ class ConsistencyMetricEngine extends MetricEngine
     });
   }
 }
+
+class CurrentnessMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+    this.state.options = new Date();
+  }
+
+  compute(docs, props, callback) {
+
+    this.state.options = props;
+
+    var limit = new Date(props);
+    limit.setTime( limit.getTime() + limit.getTimezoneOffset()*60*1000 );
+
+    var score = 0.0;
+
+    var today = new Date();
+    var c = 0.0;
+    var diff = 0.0;
+    var timeDiff = 0.0;
+
+    for(var i = 0; i<docs.length; i++){
+      var timestamp = docs[i]["_id"].toString().substring(0,8);
+      var dat = new Date( parseInt( timestamp, 16 ) * 1000 );
+
+      if(dat >= limit){
+        timeDiff = Math.abs(today.getTime() - dat.getTime());
+        diff += Math.ceil(timeDiff / (1000 * 3600 * 24));
+        c++;
+      }
+    }
+
+    if(c==0.0){
+      callback(new MetricEngine.error("No documents to analyze"));
+      return;
+    }
+
+    timeDiff = Math.abs(today.getTime() - limit.getTime());
+    var limitDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+    score = 1.0 - (diff/(c*limitDiff));
+
+    console.log(diff/c, limitDiff, score);
+
+    return callback(score);
+  }
+}
+
 /**
  * Performance Plugin store.
  */
@@ -758,7 +807,8 @@ class ConsistencyMetricEngine extends MetricEngine
           "AttributeCompletenessMetric": new AttributeCompletenessMetricEngine(this.dataService),
           "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
           "RegexMetric": new RegexMetricEngine(this.dataService),
-          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace)
+          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace),
+          "CurrentnessMetric": new CurrentnessMetricEngine(this.dataService)
         };
 
         var metrics = {};
