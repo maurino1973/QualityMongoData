@@ -628,6 +628,7 @@ class ConsistencyMetricEngine extends MetricEngine
 	 * when the store is required and instantiated. Stores are singletons.
 	 */
 	 init() {
+     this.sampleCount = null;
 	 },
 
 	/**
@@ -749,11 +750,11 @@ class ConsistencyMetricEngine extends MetricEngine
 
    onQueryChanged(state) {
      if (state.ns && toNS(state.ns).collection) {
-       this.filter  = state.filter;
-       this.project = state.project;
-       this.sort    = state.sort;
-       this.skip    = state.skip;
-       this.limit   = state.limit;
+       this.filter    = state.filter;
+       this.project   = state.project;
+       this.sort      = state.sort;
+       this.skip      = state.skip;
+       this.limit     = state.limit;
        this.namespace = state.ns;
      }
      console.log("onQueryChanged");
@@ -768,8 +769,6 @@ class ConsistencyMetricEngine extends MetricEngine
     * Called when a query or a sampling is made
     */
    queryRequestFunct() {
-     //this.onCollectionChanged(this.namespace);
-     //TODO: Change position, see onCollectionChanged TODO
      var state = this.getInitialState();
      state.status = 'enabled';
      this.setState(state);
@@ -796,6 +795,7 @@ class ConsistencyMetricEngine extends MetricEngine
        var state = this.getInitialState();
        state.status = 'enabled';
        this.setState(state);
+       this.sampleCount = number;
 
        this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
@@ -850,6 +850,16 @@ class ConsistencyMetricEngine extends MetricEngine
            this.setState({metrics: newMetrics,
                           weights: newWeights
            });
+
+           //TODO: Refactor this and avoid code duplication
+           console.log(this.dataService);
+           const dbName = toNS(this.namespace).database;
+           const collName = toNS(this.namespace).collection;
+           const pluginCollName = "_" + collName + "_qualitydata";
+           const pluginDbNs = dbName + "." + pluginCollName;
+           this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+           console.log(this.serializableData.qualityMetrics, pluginDbNs);
+           this.dataService.findOneAndReplace(pluginDbNs, {}, this.serializableData, {sort:{lastUpdate: -1}}, () => {});
          }
 
          this._computeGlobalScore(newMetrics, newWeights);
@@ -1175,6 +1185,99 @@ class ConsistencyMetricEngine extends MetricEngine
      });
    },
 
+   loadLastSave() {
+   },
+
+   _saveCurrentState() {
+     console.log(this.dataService);
+
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+     this.dataService.client.listCollections(dbName, {}, (err, res) => {
+
+       var findPluginCollection = (onEndJob) => {
+         for (var i = 0; i < res.length; ++i) {
+           if (res[i].name === pluginCollName) {
+             onEndJob();
+             return;
+           }
+         }
+
+         // Create new collection if it does not exists.
+         this.dataService.createCollection(pluginDbNs, {}, () => {
+           onEndJob();
+         });
+       };
+
+       this.serializableData = {
+         lastUpdate: new Date(Date.now()),
+         originalCollectionName: collName,
+         collectionInfo: {
+           query: {
+             // CHECK if you can load this data
+             filter: this.filter,
+             project: this.project,
+             sort: this.sort,
+             skip: this.skip,
+             limit: this.limit
+           },
+           sampleSize: this.sampleCount
+         },
+         qualityMetrics: [],
+         profilingTree: {
+           attributes: [],
+           functionalDependency: []
+         }
+       };
+
+       this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes();
+
+       findPluginCollection(() => {
+         this.dataService.client.insertOne(pluginDbNs, this.serializableData, {}, () => {});
+       });
+     });
+   },
+
+   _getQualityMetricsInfo() {
+     return Object.keys(this.state._metricEngine).map((mname, index) => {
+       return ({
+         name: mname,
+         score: this.state.metrics[mname],
+         weight: this.state.weights[mname],
+         algorithm: "", //NOTE: What is this?
+         parameters: Object.keys(this.state._metricEngine[mname].getOptions()).map((key, index) => {
+           return ({
+             name: key,
+             param: this.state._metricEngine[mname].getOptions()[key]
+           });
+         })
+       });
+     });
+   },
+
+   _getProfilingTreeAttributes() {
+     // TODO: Recursive
+     return Object.keys(this.state.collectionsValues).map((key, index) => {
+       return ({
+         attribute: key, //NOTE fullpath
+         inferredDataTypes: this.state.collectionsValues[key].type,
+         top10valueDistribution: {  //TODO: implement?
+           valueItem: "",
+           valuePercentage: 0.0
+         },
+
+         occurrences: this.state.collectionsValues[key].count,
+         completeness: this.state.collectionsValues[key].percentage,
+         numberDistinctValues: null,
+         closedWorldAssumption: this.state.collectionsValues[key].cwa,
+         pseudoPrimaryKey: this.state.collectionsValues[key].cpk
+       });
+     });
+   },
+
    /*
     * Listeners for events in Compass
     */
@@ -1184,7 +1287,6 @@ class ConsistencyMetricEngine extends MetricEngine
      this.resetCollection();
    },
 
-   //TODO: calculate on query submission or sampling
    onCollectionChanged(namespace) {
      console.log("Collection Changed");
      this.namespace = namespace;
@@ -1196,7 +1298,7 @@ class ConsistencyMetricEngine extends MetricEngine
        computingMetadata:     true,
        collectionsValues:     [],
        collectionValuesByKey: []
-    });
+     });
 
      this._calculateMetaData(docs, useMapReduce, (data) => {
        this.setState({
@@ -1205,6 +1307,8 @@ class ConsistencyMetricEngine extends MetricEngine
          _docs: docs,
          computingMetadata: false
        });
+
+       this._saveCurrentState();
      });
    },
 

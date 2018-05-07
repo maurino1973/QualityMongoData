@@ -5,7 +5,8 @@ const QualityActions = Reflux.createActions([
   'queryRequestFunct',  //find
   'resetCollection',
   'computeMetric',
-  'changeWeights'
+  'changeWeights',
+  'loadLastSave'
 ]);
 
 export default QualityActions;

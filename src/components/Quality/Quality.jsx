@@ -560,6 +560,10 @@ class Quality extends Component {
     this.props.actions.resetCollection();
   }
 
+  loadLastSave() {
+    this.props.actions.loadLastSave();
+  }
+
   /**
    * Render Quality component.
    *
@@ -586,6 +590,10 @@ class Quality extends Component {
             <input type="button" onClick={this.getRandSubset} value="Get the subset"/>
 
             <input type="button" onClick={this.resetSubset} value="Reset"/>
+
+            <div>
+              <input type="button" onClick={this.loadLastSave.bind(this)} value="Load last save"/>
+            </div>
           </div>
 
           <PluginTabBar
