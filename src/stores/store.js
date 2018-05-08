@@ -75,6 +75,10 @@ class MetricEngine
   getOptions() {
     return this.state.options;
   }
+
+  loadOptions(opt) {
+    this.state.options = opt;
+  }
 }
 
 class CompletenessMetricEngine extends MetricEngine
@@ -688,8 +692,6 @@ class ConsistencyMetricEngine extends MetricEngine
     */
 
 	onActivated(appRegistry) {
-    //TODO: Change the way the plugin update itself: it should fetch data only
-    //      when querying or sampling
 		// Events emitted from the app registry:
 		appRegistry.on('collection-changed', this.onCollectionChanged.bind(this));
 		appRegistry.on('database-changed', this.onDatabaseChanged.bind(this));
@@ -851,15 +853,8 @@ class ConsistencyMetricEngine extends MetricEngine
                           weights: newWeights
            });
 
-           //TODO: Refactor this and avoid code duplication
-           console.log(this.dataService);
-           const dbName = toNS(this.namespace).database;
-           const collName = toNS(this.namespace).collection;
-           const pluginCollName = "_" + collName + "_qualitydata";
-           const pluginDbNs = dbName + "." + pluginCollName;
            this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
-           console.log(this.serializableData.qualityMetrics, pluginDbNs);
-           this.dataService.findOneAndReplace(pluginDbNs, {}, this.serializableData, {sort:{lastUpdate: -1}}, () => {});
+           this._updateCurrentSaveState();
          }
 
          this._computeGlobalScore(newMetrics, newWeights);
@@ -871,6 +866,9 @@ class ConsistencyMetricEngine extends MetricEngine
    changeWeights(weights) {
      var w = _.clone(weights);
      this.setState({weights: w});
+
+     this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+     this._updateCurrentSaveState();
 
      this._computeGlobalScore(this.state.metrics, w);
    },
@@ -1186,6 +1184,65 @@ class ConsistencyMetricEngine extends MetricEngine
    },
 
    loadLastSave() {
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+
+     //TODO: Feedback: what if saving collection does not exists?
+     this.dataService.find(pluginDbNs, {}, {sort:{lastUpdate: -1}}, (errors, docs) => {
+       if (errors == null && docs.length > 0) {
+         const doc = docs[0];
+         this.serializableData = doc;
+
+         //NOTE: No checks for possibly corrupted data...
+         /***** Query *****/
+         this.filter  = doc.collectionInfo.query.filter;
+         this.project = doc.collectionInfo.query.project;
+         this.sort    = doc.collectionInfo.query.sort;
+         this.skip    = doc.collectionInfo.query.skip;
+         this.limit   = doc.collectionInfo.query.limit;
+         this.sampleCount = doc.collectionInfo.query.sampleCount;
+
+         /***** Metrics *****/
+         var metricsTemp = {};
+         var weightsTemp = {};
+         for (var i = 0; i < doc.qualityMetrics.length; ++i) {
+           const metricName = doc.qualityMetrics[i].name;
+
+           metricsTemp[metricName] = doc.qualityMetrics[i].score;
+           weightsTemp[metricName] = doc.qualityMetrics[i].weight;
+
+           // Recontruct params dict
+           var opt = {}
+           for (var j = 0; j < doc.qualityMetrics[i].parameters.length; ++j) {
+             var param = doc.qualityMetrics[i].parameters[j];
+             opt[param.name] = param.param;
+           }
+           this.state._metricEngine[metricName].loadOptions(opt);
+         }
+         this._computeGlobalScore(metricsTemp, weightsTemp);
+         this.setState({metrics: metricsTemp, weights: weightsTemp});
+
+         /***** Profiling Tree *****/
+         var res = this._loadProfilingTreeAttributes(doc.profilingTree.attributes);
+         this.setState({collectionsValues: res[0], collectionValuesByKey: res[1]});
+
+         const findOptions = {
+           sort: this.sort,
+           fields: this.project,
+           skip: this.skip,
+           limit: this.limit
+         };
+
+         //TODO: implement sampling
+         this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
+           this.setState({_docs: docs, status: 'enabled', computingMetadata: false});
+         });
+       }
+
+       // TODO: Feedback: collection is empty...
+     });
    },
 
    _saveCurrentState() {
@@ -1233,12 +1290,20 @@ class ConsistencyMetricEngine extends MetricEngine
        };
 
        this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
-       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes();
+       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes(this.state.collectionsValues, []);
 
        findPluginCollection(() => {
          this.dataService.client.insertOne(pluginDbNs, this.serializableData, {}, () => {});
        });
      });
+   },
+
+   _updateCurrentSaveState() {
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+     this.dataService.findOneAndReplace(pluginDbNs, {}, this.serializableData, {sort:{lastUpdate: -1}}, () => {});
    },
 
    _getQualityMetricsInfo() {
@@ -1258,24 +1323,90 @@ class ConsistencyMetricEngine extends MetricEngine
      });
    },
 
-   _getProfilingTreeAttributes() {
-     // TODO: Recursive
-     return Object.keys(this.state.collectionsValues).map((key, index) => {
-       return ({
-         attribute: key, //NOTE fullpath
-         inferredDataTypes: this.state.collectionsValues[key].type,
+   _getProfilingTreeAttributes(dict, basepath) {
+     const dictkeys = Object.keys(dict);
+     var attrs = [];
+
+     for (var i = 0; i < dictkeys.length; ++i) {
+       const key = dictkeys[i];
+
+       var path = _.clone(basepath);
+       path.push(key);
+
+       //NOTE: parents first
+       attrs.push({
+         attribute: path,
+         inferredDataTypes: dict[key].type,
          top10valueDistribution: {  //TODO: implement?
            valueItem: "",
            valuePercentage: 0.0
          },
 
-         occurrences: this.state.collectionsValues[key].count,
-         completeness: this.state.collectionsValues[key].percentage,
+         occurrences: dict[key].count,
+         completeness: dict[key].percentage,
          numberDistinctValues: null,
-         closedWorldAssumption: this.state.collectionsValues[key].cwa,
-         pseudoPrimaryKey: this.state.collectionsValues[key].cpk
+         closedWorldAssumption: dict[key].cwa,
+         pseudoPrimaryKey: dict[key].cpk
        });
-     });
+
+       if ("children" in dict[key]) {
+         attrs = attrs.concat(this._getProfilingTreeAttributes(dict[key].children, path));
+       }
+     }
+
+     return attrs;
+   },
+
+   //TODO: fill collectionValuesByKey (frequencies)
+   _loadProfilingTreeAttributes(attrs) {
+     var lvl = 1;
+     var remainingAttrs = _.clone(attrs);
+
+     var collValuesTemp = {};
+     var freqsTemp = {}
+     while (remainingAttrs.length > 0) {
+       var tmpRemaining = [];
+       for (var i = 0; i < remainingAttrs.length; ++i) {
+         const key = remainingAttrs[i].attribute;
+
+         if (key.length > lvl) {
+           tmpRemaining.push(remainingAttrs[i]);
+         }
+
+         var currSubTree = collValuesTemp;
+         var currFreqSubTree = freqsTemp;
+         for (var j = 0; j < lvl - 1; ++j) {
+           currSubTree = currSubTree[key[j]].children;
+           currFreqSubTree = currFreqSubTree[key[j]].children;
+         }
+
+         currSubTree[key[lvl - 1]] = {
+           "type" : [],
+           "count" : 0,
+           "percentage": 0,
+           "multiple": false,
+           "cwa": false,
+           "cpk": false,
+           "children": {}
+         };
+
+         currFreqSubTree[key[lvl - 1]] = {
+           "values": {},
+           "children": {}
+         };
+
+         currSubTree[key[lvl - 1]].type = remainingAttrs[i].inferredDataTypes;
+         currSubTree[key[lvl - 1]].count = remainingAttrs[i].occurrences;
+         currSubTree[key[lvl - 1]].percentage = remainingAttrs[i].completeness;
+         currSubTree[key[lvl - 1]].cwa = remainingAttrs[i].closedWorldAssumption;
+         currSubTree[key[lvl - 1]].cpk = remainingAttrs[i].pseudoPrimaryKey;
+       }
+
+       remainingAttrs = tmpRemaining;
+       lvl += 1;
+     }
+
+     return [collValuesTemp, freqsTemp];
    },
 
    /*
