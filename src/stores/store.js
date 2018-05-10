@@ -68,7 +68,7 @@ class MetricEngine
    * The method must return a number >= 0.0 and <= 1.0 or an instance of
    * MetricEngine.error
    */
-  compute(docs, props) {
+  compute(docs, props, callback) {
     // Override me
   }
 
@@ -1290,7 +1290,7 @@ class ConsistencyMetricEngine extends MetricEngine
        };
 
        this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
-       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes(this.state.collectionsValues, []);
+       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes(this.state.collectionsValues, this.state.collectionValuesByKey, []);
 
        findPluginCollection(() => {
          this.dataService.client.insertOne(pluginDbNs, this.serializableData, {}, () => {});
@@ -1323,9 +1323,23 @@ class ConsistencyMetricEngine extends MetricEngine
      });
    },
 
-   _getProfilingTreeAttributes(dict, basepath) {
+   _getProfilingTreeAttributes(dict, freqs, basepath) {
      const dictkeys = Object.keys(dict);
      var attrs = [];
+
+     var getFrequencies = (key, data) => {
+       const datakeys = Object.keys(data);
+
+       if (key in data) {
+         return Object.keys(data[key].values).map((curr, index) => {
+           return (
+             {value: curr, count: data[key].values[curr].count, type: data[key].values[curr].type}
+           );
+         });
+       }
+
+       return [];
+     };
 
      for (var i = 0; i < dictkeys.length; ++i) {
        const key = dictkeys[i];
@@ -1337,7 +1351,8 @@ class ConsistencyMetricEngine extends MetricEngine
        attrs.push({
          attribute: path,
          inferredDataTypes: dict[key].type,
-         top10valueDistribution: {  //TODO: implement?
+         frequencies: getFrequencies(key, freqs),
+         top10valueDistribution: {  //TODO:
            valueItem: "",
            valuePercentage: 0.0
          },
@@ -1350,7 +1365,8 @@ class ConsistencyMetricEngine extends MetricEngine
        });
 
        if ("children" in dict[key]) {
-         attrs = attrs.concat(this._getProfilingTreeAttributes(dict[key].children, path));
+         attrs = attrs.concat(this._getProfilingTreeAttributes(dict[key].children,
+                                                               key in freqs ? freqs[key].children : {}, path));
        }
      }
 
@@ -1359,6 +1375,16 @@ class ConsistencyMetricEngine extends MetricEngine
 
    //TODO: fill collectionValuesByKey (frequencies)
    _loadProfilingTreeAttributes(attrs) {
+     var getFrequencies = (freqs) => {
+       var result = {};
+
+       for (var i = 0; i < freqs.length; ++i) {
+         result[freqs[i].value] = {count: freqs[i].count, type: freqs[i].type}
+       }
+
+       return result;
+     };
+
      var lvl = 1;
      var remainingAttrs = _.clone(attrs);
 
@@ -1371,35 +1397,38 @@ class ConsistencyMetricEngine extends MetricEngine
 
          if (key.length > lvl) {
            tmpRemaining.push(remainingAttrs[i]);
+         } else {
+           var currSubTree = collValuesTemp;
+           var currFreqSubTree = freqsTemp;
+           for (var j = 0; j < lvl - 1; ++j) {
+             currSubTree = currSubTree[key[j]].children;
+             currFreqSubTree = currFreqSubTree[key[j]].children;
+           }
+
+           currSubTree[key[lvl - 1]] = {
+             "type" : [],
+             "count" : 0,
+             "percentage": 0,
+             "multiple": false,
+             "cwa": false,
+             "cpk": false,
+             "children": {}
+           };
+
+           currFreqSubTree[key[lvl - 1]] = {
+             "values": {},
+             "children": {}
+           };
+
+           currSubTree[key[lvl - 1]].type = remainingAttrs[i].inferredDataTypes;
+           currSubTree[key[lvl - 1]].count = remainingAttrs[i].occurrences;
+           currSubTree[key[lvl - 1]].percentage = remainingAttrs[i].completeness;
+           currSubTree[key[lvl - 1]].multiple = currSubTree[key[lvl - 1]].type.length > 1;
+           currSubTree[key[lvl - 1]].cwa = remainingAttrs[i].closedWorldAssumption;
+           currSubTree[key[lvl - 1]].cpk = remainingAttrs[i].pseudoPrimaryKey;
+
+           currFreqSubTree[key[lvl - 1]].values = getFrequencies(remainingAttrs[i].frequencies);
          }
-
-         var currSubTree = collValuesTemp;
-         var currFreqSubTree = freqsTemp;
-         for (var j = 0; j < lvl - 1; ++j) {
-           currSubTree = currSubTree[key[j]].children;
-           currFreqSubTree = currFreqSubTree[key[j]].children;
-         }
-
-         currSubTree[key[lvl - 1]] = {
-           "type" : [],
-           "count" : 0,
-           "percentage": 0,
-           "multiple": false,
-           "cwa": false,
-           "cpk": false,
-           "children": {}
-         };
-
-         currFreqSubTree[key[lvl - 1]] = {
-           "values": {},
-           "children": {}
-         };
-
-         currSubTree[key[lvl - 1]].type = remainingAttrs[i].inferredDataTypes;
-         currSubTree[key[lvl - 1]].count = remainingAttrs[i].occurrences;
-         currSubTree[key[lvl - 1]].percentage = remainingAttrs[i].completeness;
-         currSubTree[key[lvl - 1]].cwa = remainingAttrs[i].closedWorldAssumption;
-         currSubTree[key[lvl - 1]].cpk = remainingAttrs[i].pseudoPrimaryKey;
        }
 
        remainingAttrs = tmpRemaining;

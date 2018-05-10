@@ -574,6 +574,13 @@ class Quality extends Component {
     return (
         <div className={classnames(styles.root)}>
           <div className={ classnames(styles.menu) }>
+            Make a query, get a subset or restore previous state.
+            <div>
+              <input type="button" onClick={this.loadLastSave.bind(this)} value="Restore"/>
+            </div>
+          </div>
+
+          <div className={ classnames(styles.menu) }>
             Here you could insert a query and analyze the quality on the result.
           </div>
           <this.queryBar
@@ -590,10 +597,6 @@ class Quality extends Component {
             <input type="button" onClick={this.getRandSubset} value="Get the subset"/>
 
             <input type="button" onClick={this.resetSubset} value="Reset"/>
-
-            <div>
-              <input type="button" onClick={this.loadLastSave.bind(this)} value="Load last save"/>
-            </div>
           </div>
 
           <PluginTabBar
