@@ -574,13 +574,6 @@ class Quality extends Component {
     return (
         <div className={classnames(styles.root)}>
           <div className={ classnames(styles.menu) }>
-            Make a query, get a subset or restore previous state.
-            <div>
-              <input type="button" onClick={this.loadLastSave.bind(this)} value="Restore"/>
-            </div>
-          </div>
-
-          <div className={ classnames(styles.menu) }>
             Here you could insert a query and analyze the quality on the result.
           </div>
           <this.queryBar
@@ -600,7 +593,7 @@ class Quality extends Component {
           </div>
 
           <PluginTabBar
-            active={this.props.status == 'enabled'}
+            active={this.props.status == 'enabled' && !this.props.computingMetadata}
             store={this.props}
             metrics={this._makeMetricComponents(this.props.metrics)}>
           </PluginTabBar>

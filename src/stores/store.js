@@ -633,6 +633,7 @@ class ConsistencyMetricEngine extends MetricEngine
 	 */
 	 init() {
      this.sampleCount = null;
+     this.sampleSeed = null;
 	 },
 
 	/**
@@ -722,7 +723,8 @@ class ConsistencyMetricEngine extends MetricEngine
        metrics: {},
        weights: {},
        freqs: [],
-       _docs: []
+       _docs: [],
+       serializedState: ""
      };
 
 
@@ -781,6 +783,8 @@ class ConsistencyMetricEngine extends MetricEngine
        limit: this.limit
      };
 
+     this.sampleCount = null;
+
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
        console.log("onQueryRequestFunct");
        this._updateMetaData(docs, true);
@@ -806,7 +810,10 @@ class ConsistencyMetricEngine extends MetricEngine
          if(number >= dataReturnedFind.length){
            tmpValues = dataReturnedFind;
          }else{
-           tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+           //tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+           this._random.seed = Date.now();
+           this.sampleSeed = this._random.seed;
+           tmpValues = this._shuffle(dataReturnedFind).slice(0, number);
         }
 
         console.log("randomRequestFunct");
@@ -1202,7 +1209,8 @@ class ConsistencyMetricEngine extends MetricEngine
          this.sort    = doc.collectionInfo.query.sort;
          this.skip    = doc.collectionInfo.query.skip;
          this.limit   = doc.collectionInfo.query.limit;
-         this.sampleCount = doc.collectionInfo.query.sampleCount;
+         this.sampleCount = doc.collectionInfo.sampleSize;
+         this.sampleSeed  = doc.collectionInfo.sampleSeed;
 
          /***** Metrics *****/
          var metricsTemp = {};
@@ -1235,9 +1243,21 @@ class ConsistencyMetricEngine extends MetricEngine
            limit: this.limit
          };
 
-         //TODO: implement sampling
          this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
-           this.setState({_docs: docs, status: 'enabled', computingMetadata: false});
+           if (this.sampleCount != null && this.sampleCount > 0) {
+             this._random.seed = this.sampleSeed;
+             this.setState({
+               _docs: this._shuffle(docs).slice(0, this.sampleCount),
+               status: 'enabled',
+               computingMetadata: false
+            });
+           } else {
+             this.setState({
+               _docs: docs,
+               status: 'enabled',
+               computingMetadata: false
+            });
+           }
          });
        }
 
@@ -1280,7 +1300,8 @@ class ConsistencyMetricEngine extends MetricEngine
              skip: this.skip,
              limit: this.limit
            },
-           sampleSize: this.sampleCount
+           sampleSize: this.sampleCount,
+           sampleSeed: this.sampleSeed
          },
          qualityMetrics: [],
          profilingTree: {
@@ -1291,6 +1312,8 @@ class ConsistencyMetricEngine extends MetricEngine
 
        this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
        this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes(this.state.collectionsValues, this.state.collectionValuesByKey, []);
+
+       this.setState({serializedState: this.serializableData});
 
        findPluginCollection(() => {
          this.dataService.client.insertOne(pluginDbNs, this.serializableData, {}, () => {});
@@ -1494,6 +1517,39 @@ class ConsistencyMetricEngine extends MetricEngine
      } else {
        return "unsupported";
      }
+   },
+
+   /** System indipendent shuffle seeded function (Fisher–Yates shuffle).
+    *  See https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#The_modern_algorithm
+    **/
+   _shuffle(array) {
+     for (var i = array.length - 1; i > 0; i--) {
+       var idx = Math.floor(this._random(0, 1) * (i + 1));
+
+       // swap
+       var tmp    = array[i];
+       array[i]   = array[idx];
+       array[idx] = tmp;
+     }
+
+     return array;
+   },
+
+   /** Simple (bad) system indipendent seeded pseudorandom number generator
+    *  See http://www.ict.griffith.edu.au/anthony/info/C/RandomNumbers
+    **/
+   _random(min, max) {
+     if(typeof this._random.seed == 'undefined') {
+       this._random.seed = 0;
+     }
+
+     max = max || 1;
+     min = min || 0;
+
+     this._random.seed = (this._random.seed * 9301 + 49297) % 233280;
+     var rnd = this._random.seed / 233280;
+
+     return min + rnd * (max - min);
    },
 
    /**
