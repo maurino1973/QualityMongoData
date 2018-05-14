@@ -103,7 +103,7 @@ class DashBoard extends Tab {
         <p className={ classnames(styles.dashboardScore) }>
           Quality score: { this.props.store.collectionScore.toFixed(1) + "%"}
         </p>
-        <p>Change weights for the metrics:</p>
+        <p>Change metrics weight:</p>
 
         <RangeGroup
           metrics={this.props.metrics}
@@ -149,10 +149,10 @@ class ProfileTab extends Tab
         </span>
       );
     } else {
-      if (this.props.store.collectionsValues.length == 0) {
+      if (Object.keys(this.props.store.collectionsValues).length == 0) {
         return (
           <span>
-          No keys found.
+          Empty result set.
           </span>
         );
       }
@@ -351,6 +351,41 @@ class ProfileTab extends Tab
   }
 }
 
+class ImportExportTab extends Tab {
+  static displayName = 'ImportExportTab';
+  static propTypes = {
+    store: PropTypes.Array
+  };
+
+  constructor(props) {
+    super(props);
+  }
+
+  loadLastSave() {
+    this.props.store.actions.loadLastSave();
+  }
+
+  renderContent() {
+    var json = JSON.stringify(this.props.store.serializedState, null, 4);
+    return (
+      <div>
+        Load previous plugin state.
+        <div>
+          <input type="button" onClick={this.loadLastSave.bind(this)} value="Restore"/>
+        </div>
+
+        Shows current state as json.
+        <div>
+          <textarea rows="20" cols="70"
+                    value={ json }
+                    readOnly={true}
+          />
+        </div>
+      </div>
+    );
+  }
+}
+
 class PluginTabBar extends Component {
   static displayName = 'PluginTabBar';
 
@@ -394,13 +429,14 @@ class PluginTabBar extends Component {
 
   render() {
     let activeTab = this.tabs[this.state.activeTab];
+    const isDisabled = !this.props.active && activeTab.props.title != "Import/Export";
 
     return (
       <div>
-        <ul className={styles.tabbar}>
+        <ul className={ styles.tabbar }>
           { Object.keys(this.tabs).map(this.renderTabBar.bind(this)) }
         </ul>
-        <div>
+        <div className={ isDisabled ? styles.disabled : null }>
           { activeTab }
         </div>
       </div>
@@ -412,9 +448,12 @@ class PluginTabBar extends Component {
 
     this.tabs.push(<ProfileTab title="Profile" store={ props.store }/>);
     this.tabs.push(<DashBoard title="Dashboard" store={ props.store } metrics={ props.metrics }/>);
+
     for (var i in props.metrics) {
       this.tabs.push(props.metrics[i]);
     }
+
+    this.tabs.push(<ImportExportTab title="Import/Export" store={ props.store }/>);
   }
 }
 
