@@ -29,6 +29,119 @@ class CompletenessMetricTab extends MetricTab {
   }
 }
 
+class AttributeCompletenessMetricTab extends MetricTab {
+  static displayName = 'AttributeCompletenessMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    var opt = this.state.options;
+
+    for (var key in opt)
+      opt[key] = "0";
+
+    this.keys = [];
+
+    var docs = this.props.docs;
+
+    for(var i = 0; i<docs.length; i++){
+      for (var key in docs[i]){
+        if(this.keys.indexOf(key) === -1){
+          opt[key] = "1";
+          this.keys.push(key);
+        }
+      }
+    }
+
+    this.setState({options : opt});
+
+    this.changeAttr = this.changeAttr.bind(this);
+  }
+
+  changeAttr(evt){
+    var opt = this.state.options;
+    var attrMod = evt.target.name.toString().substring(9, evt.target.name.lenght);
+    opt[attrMod] = evt.target.value;
+    this.setState({options: opt});
+
+    var c = 0;
+
+    for(var i=0; i<this.keys.length; i++)
+      if(parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value) != 0.0 && this.keys[i] != attrMod)
+        c++;
+
+    var id = "attrMetr_"+attrMod;
+
+    if(c == 0){
+      if(parseFloat(evt.target.value) != 0.0)
+        document.getElementById(id).innerHTML = 100;
+      else
+        document.getElementById(id).innerHTML = 0;
+      return;
+    }
+
+    if(c == 1 && evt.target.value == 0.0){
+      for(var i=0; i<this.keys.length; i++)
+        if(parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value) != 0.0 && this.keys[i] != attrMod)
+          document.getElementById("attrMetr_"+this.keys[i]).innerHTML = 100;
+      return;
+    }
+
+    var notParsedVal = parseFloat(evt.target.value);
+    var parsedVal = Math.round((notParsedVal*100/(c+1)) * 10) / 10;
+    document.getElementById(id).innerHTML = parsedVal;
+
+    var each = (100.0 - parsedVal)/c;
+
+//     console.log(notParsedVal, parsedVal, each, c);
+
+    for(var i=0; i<this.keys.length; i++){
+
+      notParsedVal = parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value);
+
+      if(this.keys[i] != attrMod && notParsedVal != 0.0){
+        parsedVal = Math.round((notParsedVal*each) * 10) / 10;
+        document.getElementById("attrMetr_"+this.keys[i]).innerHTML = parsedVal;
+      }
+    }
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          The attribute completeness metric allows you to score the completness on the attributes in wich you are interested.
+        </p>
+        <p>
+          Also, it allows you to weight the attributes however you want.
+        </p>
+        <p>
+          The score would be low if the attributes that you choosed are used sparingly across the documents.
+          On opposite it would be high if they are frequently present.
+        </p>
+        <p>
+          Below you could weigh the attribute to analyze (if the weight of an attribute is 0 it will not be considered).
+        </p><p>
+          <table>
+          {
+            this.keys.map((key) => {
+              return (
+                <tr>
+                  <td><b>{key.toString()}</b></td>
+                  <td><input type="range" name={"attrMetr_"+key.toString()} step="0.01" min="0.0" max="1.0" onChange={this.changeAttr}/></td>
+                  <td><p id={"attrMetr_"+key.toString()}>{Math.round((100.0/this.keys.length) * 10) / 10}</p></td>
+                  <td><p>%</p></td>
+                </tr>
+                );
+              })
+          }
+          </table>
+        </p>
+      </div>
+    );
+  }
+}
+
 class CandidatePkMetricTab extends MetricTab{
 
   static displayName = 'CandidatePkMetricTab';
@@ -65,6 +178,7 @@ class RegexMetricTab extends MetricTab{
                         if(meta.indexOf(key) === -1){
                           if(!(docs[i][key] instanceof Array) && typeof docs[i][key] == "object" && key != "_id"){
                             meta = ricFun(meta, docs[i][key], key, ricFun);
+                            meta.push(key);
                           }else{
                             meta.push(key);
                           }
@@ -73,9 +187,9 @@ class RegexMetricTab extends MetricTab{
                     }
                     return meta;
                   })(this.props.docs, this.analyzeObject);
-    console.log(this.keys);
     var opt = this.state.options;
     opt["path"] = this.keys[0];
+    opt["regex"] = "";
     this.setState({options: opt});
     this.changeAttr = this.changeAttr.bind(this);
     this.changeExpr = this.changeExpr.bind(this);
@@ -507,6 +621,49 @@ class ConsistencyMetricTab extends MetricTab {
   }
 }
 
+class CurrentnessMetricTab extends MetricTab{
+
+  static displayName = 'CurrentnessMetricTab';
+
+  constructor(props) {
+    super(props);
+    this.changeAttr = this.changeAttr.bind(this);
+  }
+
+  changeAttr(evt){
+    var opt = this.state.options;
+    opt = evt.target.value;
+    this.setState({options: opt});
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          You must choose a date and a time in order to measure the currentness of the <b>current collection</b>.
+        </p>
+        <p>
+          Only the documents added more recently than the chosen date will be considered.
+        </p>
+        <p>
+        You must insert both date and time, otherwise the result will be score with the current date and time as limit.
+        </p>
+        <p>
+          <input id="currentness-datetime" type="datetime-local" onChange={this.changeAttr}/>
+          &nbsp;&nbsp;&nbsp;(Be carefull, you are choosing the date with the current timezone offset).
+        </p>
+        <p>
+          The score would be high if the average date of insertion of documents is close to today's date.
+        </p>
+        <p>
+          Otherwise, the score would be low if the the average date of insertion of documents is close to the selected date.
+        </p>
+      </div>
+    );
+  }
+
+}
+
 class Quality extends Component {
   static displayName = 'QualityComponent';
   static propTypes = {
@@ -609,9 +766,11 @@ class Quality extends Component {
     //TODO: Place this in ctor
     var metricCompMap = {
       "CompletenessMetric": [CompletenessMetricTab, "Completeness"],
+      "AttributeCompletenessMetric": [AttributeCompletenessMetricTab, "Attribute Completeness"],
       "CandidatePkMetric": [CandidatePkMetricTab, "Candidate Primary Key"],
       "RegexMetric": [RegexMetricTab, "Regex Accuracy"],
-      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"]
+      "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"],
+      "CurrentnessMetric": [CurrentnessMetricTab, "Currentness"]
     };
 
     for (const key in engines) {

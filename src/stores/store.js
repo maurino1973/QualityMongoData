@@ -124,6 +124,53 @@ class CompletenessMetricEngine extends MetricEngine
   }
 }
 
+class AttributeCompletenessMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+    this.state.options = {};
+  }
+
+  compute(docs, props, callback) {
+
+    this.state.options = props;
+
+    var scores = {};
+
+    for(var k in props)
+      if(parseFloat(props[k]) > 0)
+        scores[k] = 0;
+
+    if(_.isEqual(scores, {})){
+      callback(new MetricEngine.error("Invalid weights"));
+      return;
+    }
+
+    for (var i in docs) {
+      for (var key in docs[i]) {
+        if (key in scores)
+          scores[key] += 1;
+      }
+    }
+
+    var tot = 0.0;
+    var weights = 0.0;
+
+    for(var i in scores){
+      tot += (scores[i] * props[i] / docs.length);
+      weights += parseFloat(props[i]);
+    }
+
+    if(weights == 0.0){
+      callback(new MetricEngine.error("Invalid weights"));
+      return;
+    }
+
+
+    return callback(tot/weights);
+  }
+}
+
 class CandidatePkMetricEngine extends MetricEngine
 {
   constructor(dataService) {
@@ -187,7 +234,7 @@ class RegexMetricEngine extends MetricEngine
     this.state.options = props;
 
     if(!this.state.options["regex"]) {
-      callback(0.0);
+      callback(new MetricEngine.error("No regex"));
       return;
     }
 
@@ -196,7 +243,7 @@ class RegexMetricEngine extends MetricEngine
     var numAttr = 0;
 
     if(path.length <= 0) {
-      callback(0.0);
+      callback(new MetricEngine.error("Invalid key"));
       return;
     }
 
@@ -208,19 +255,19 @@ class RegexMetricEngine extends MetricEngine
           if(path.length == 1){
             if (RegExp(this.state.options["regex"]).test(docs[i][key]))
               score += 1;
+            numAttr += 1;
             }else{
               var match = this.checkMatching(docs[i][key], path.slice(1), this.state.options["regex"]);
               if(match[0])
                 score += 1;
               numAttr += parseInt(match[1]);
             }
-            numAttr += 1;
           }
         }
       }
 
       if(numAttr == 0) {
-        callback(0.0);
+        callback(new MetricEngine.error("Invalid key"));
         return;
       }
 
@@ -609,6 +656,55 @@ class ConsistencyMetricEngine extends MetricEngine
     });
   }
 }
+
+class CurrentnessMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+    this.state.options = new Date();
+  }
+
+  compute(docs, props, callback) {
+
+    this.state.options = props;
+
+    var limit = new Date(props);
+    limit.setTime( limit.getTime() + limit.getTimezoneOffset()*60*1000 );
+
+    var score = 0.0;
+
+    var today = new Date();
+    var c = 0.0;
+    var diff = 0.0;
+    var timeDiff = 0.0;
+
+    for(var i = 0; i<docs.length; i++){
+      var timestamp = docs[i]["_id"].toString().substring(0,8);
+      var dat = new Date( parseInt( timestamp, 16 ) * 1000 );
+
+      if(dat >= limit){
+        timeDiff = Math.abs(today.getTime() - dat.getTime());
+        diff += Math.ceil(timeDiff / (1000 * 3600 * 24));
+        c++;
+      }
+    }
+
+    if(c==0.0){
+      callback(new MetricEngine.error("No documents to analyze"));
+      return;
+    }
+
+    timeDiff = Math.abs(today.getTime() - limit.getTime());
+    var limitDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+    score = 1.0 - (diff/(c*limitDiff));
+
+    console.log(diff/c, limitDiff, score);
+
+    return callback(score);
+  }
+}
+
 /**
  * Performance Plugin store.
  */
@@ -727,13 +823,14 @@ class ConsistencyMetricEngine extends MetricEngine
        serializedState: {}
      };
 
-
      if (this.dataService != null && this.namespace != null) {
         var metricEngines = {
           "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
+          "AttributeCompletenessMetric": new AttributeCompletenessMetricEngine(this.dataService),
           "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
           "RegexMetric": new RegexMetricEngine(this.dataService),
-          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace)
+          "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace),
+          "CurrentnessMetric": new CurrentnessMetricEngine(this.dataService)
         };
 
         var metrics = {};
