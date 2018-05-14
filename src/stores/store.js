@@ -68,12 +68,16 @@ class MetricEngine
    * The method must return a number >= 0.0 and <= 1.0 or an instance of
    * MetricEngine.error
    */
-  compute(docs, props) {
+  compute(docs, props, callback) {
     // Override me
   }
 
   getOptions() {
     return this.state.options;
+  }
+
+  loadOptions(opt) {
+    this.state.options = opt;
   }
 }
 
@@ -407,6 +411,7 @@ class ConsistencyMetricEngine extends MetricEngine
     } else {
       if (!tablePartEmpty && !rulePartEmpty) {
         if (tableScore == null) {
+          this.state.options.tables = [];
           return new MetricEngine.error("Invalid Truth tables");
         }
 
@@ -425,6 +430,7 @@ class ConsistencyMetricEngine extends MetricEngine
           return rulesScore;
         } else if (rulePartEmpty) {
           if (tableScore == null) {
+            this.state.options.tables = [];
             return new MetricEngine.error("Invalid Truth tables");
           }
 
@@ -722,6 +728,8 @@ class CurrentnessMetricEngine extends MetricEngine
 	 * when the store is required and instantiated. Stores are singletons.
 	 */
 	 init() {
+     this.sampleCount = null;
+     this.sampleSeed = null;
 	 },
 
 	/**
@@ -781,8 +789,6 @@ class CurrentnessMetricEngine extends MetricEngine
     */
 
 	onActivated(appRegistry) {
-    //TODO: Change the way the plugin update itself: it should fetch data only
-    //      when querying or sampling
 		// Events emitted from the app registry:
 		appRegistry.on('collection-changed', this.onCollectionChanged.bind(this));
 		appRegistry.on('database-changed', this.onDatabaseChanged.bind(this));
@@ -801,6 +807,22 @@ class CurrentnessMetricEngine extends MetricEngine
 	 * @return {Object} initial store state.
 	 */
 	 getInitialState() {
+     var state = {
+       status: 'disabled',
+       collections : [],
+       databases : [],
+       computingMetadata: false,
+       collectionsValues : {},
+       collectionValuesByKey: {},
+       collectionScore: 0,
+       _metricEngine: {},
+       metrics: {},
+       weights: {},
+       freqs: [],
+       _docs: [],
+       serializedState: {}
+     };
+
      if (this.dataService != null && this.namespace != null) {
         var metricEngines = {
           "CompletenessMetric": new CompletenessMetricEngine(this.dataService),
@@ -819,76 +841,38 @@ class CurrentnessMetricEngine extends MetricEngine
           weights[metricName] = 0.0;
         }
 
-        return {
-          status: 'enabled',
-          database: '',
-          collections : [],
-          databases : [],
-          computingMetadata: false,
-          collectionsValues : {},
-          collectionValuesByKey: {},
-          collectionScore: 0,
-          _metricEngine: metricEngines,
-          metrics: metrics,
-          weights: weights,
-          freqs: [],
-          _docs: []
-        };
+        state._metricEngine = metricEngines;
+        state.metrics = metrics;
+        state.weights = weights;
      }
 
-     return {
-       status: 'enabled',
-       database: '',
-       collections : [],
-       databases : [],
-       computingMetadata: false,
-       collectionsValues : {},
-       collectionValuesByKey: {},
-       collectionScore: 0,
-       _metricEngine: {},
-       metrics: {},
-       weights: {},
-       freqs: [],
-       _docs: []
-     };
+     return state;
    },
 
    onQueryChanged(state) {
      if (state.ns && toNS(state.ns).collection) {
-       this.filter  = state.filter;
-       this.project = state.project;
-       this.sort    = state.sort;
-       this.skip    = state.skip;
-       this.limit   = state.limit;
+       this.filter    = state.filter;
+       this.project   = state.project;
+       this.sort      = state.sort;
+       this.skip      = state.skip;
+       this.limit     = state.limit;
        this.namespace = state.ns;
      }
      console.log("onQueryChanged");
    },
-	/**
-	 * handlers for each action defined in ../actions/index.jsx, for example:
-	 */
-	 toggleStatus() {
-	 	this.setState({
-	 		status: this.state.status === 'enabled' ? 'disabled' : 'enabled'
-	 	});
-	 },
 
    resetCollection() {
+     console.log("Reset");
      this.setState(this.getInitialState());
-     this.dataService.find(this.namespace, {}, {}, (errors, docs) => {
-
-       console.log("Reset");
-       this._updateMetaData(docs, false);
-     });
    },
 
    /*
     * Called when a query or a sampling is made
     */
    queryRequestFunct() {
-     //this.onCollectionChanged(this.namespace);
-     //TODO: Change position, see onCollectionChanged TODO
-     this.setState(this.getInitialState());
+     var state = this.getInitialState();
+     state.status = 'enabled';
+     this.setState(state);
      const findOptions = {
        sort: this.sort,
        fields: this.project,
@@ -896,19 +880,26 @@ class CurrentnessMetricEngine extends MetricEngine
        limit: this.limit
      };
 
+     this.sampleCount = null;
+
      this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
        console.log("onQueryRequestFunct");
        this._updateMetaData(docs, true);
      });
    },
 
-   randomRequestFunct(num){
+   randomRequestFunct(num) {
      var number = parseInt(num);
 
      //if the number inserted is less than zero or isn't a number or is bigger than the length of the collection
      //analyze all the collection
 
      if(!(isNaN(number) || number<=0)){
+       var state = this.getInitialState();
+       state.status = 'enabled';
+       this.setState(state);
+       this.sampleCount = number;
+
        this.dataService.find(this.namespace, {}, {}, (errors, dataReturnedFind) => {
 
          var tmpValues = [];
@@ -916,7 +907,10 @@ class CurrentnessMetricEngine extends MetricEngine
          if(number >= dataReturnedFind.length){
            tmpValues = dataReturnedFind;
          }else{
-           tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+           //tmpValues = _.shuffle(dataReturnedFind).slice(0, number);
+           this._random.seed = Date.now();
+           this.sampleSeed = this._random.seed;
+           tmpValues = this._shuffle(dataReturnedFind).slice(0, number);
         }
 
         console.log("randomRequestFunct");
@@ -962,50 +956,23 @@ class CurrentnessMetricEngine extends MetricEngine
            this.setState({metrics: newMetrics,
                           weights: newWeights
            });
+
+           this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+           this._updateCurrentSaveState();
          }
 
          this._computeGlobalScore(newMetrics, newWeights);
          onComputationEnd(!(result.result instanceof MetricEngine.error));
        }
      });
-
-     /*
-       metricScore = new MetricEngine.error("An exception occurred, see console for more details.");
-       onComputationError(metricScore.message());
-
-       newMetrics[name] = null;
-       this.setState({metrics: newMetrics});
-
-       this._computeGlobalScore(newMetrics, newWeights);
-       onComputationEnd(!(metricScore instanceof MetricEngine.error));
-
-       throw(e);
-     */
-
-     /*
-     if (metricScore instanceof MetricEngine.error) {
-       onComputationError(metricScore.message());
-
-       newMetrics[name] = null;
-       this.setState({metrics: newMetrics});
-
-     } else {
-       newMetrics[name] = metricScore;
-       //Activate weights
-       newWeights[name] = this.state.weights[name] == 0.0 ? 1.0 : this.state.weights[name]
-       this.setState({metrics: newMetrics,
-                      weights: newWeights
-       });
-     }
-
-     this._computeGlobalScore(newMetrics, newWeights);
-     onComputationEnd(!(metricScore instanceof MetricEngine.error));
-     */
    },
 
    changeWeights(weights) {
      var w = _.clone(weights);
      this.setState({weights: w});
+
+     this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+     this._updateCurrentSaveState();
 
      this._computeGlobalScore(this.state.metrics, w);
    },
@@ -1320,24 +1287,291 @@ class CurrentnessMetricEngine extends MetricEngine
      });
    },
 
+   loadLastSave() {
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+
+     //TODO: Feedback: what if saving collection does not exists?
+     this.dataService.find(pluginDbNs, {}, {sort:{lastUpdate: -1}}, (errors, docs) => {
+       if (errors == null && docs.length > 0) {
+         const doc = docs[0];
+         this.serializableData = doc;
+         this.setState({serializedState: this.serializableData});
+
+         //NOTE: No checks for possibly corrupted data...
+         /***** Query *****/
+         this.filter  = doc.collectionInfo.query.filter;
+         this.project = doc.collectionInfo.query.project;
+         this.sort    = doc.collectionInfo.query.sort;
+         this.skip    = doc.collectionInfo.query.skip;
+         this.limit   = doc.collectionInfo.query.limit;
+         this.sampleCount = doc.collectionInfo.sampleSize;
+         this.sampleSeed  = doc.collectionInfo.sampleSeed;
+
+         /***** Metrics *****/
+         var metricsTemp = {};
+         var weightsTemp = {};
+         for (var i = 0; i < doc.qualityMetrics.length; ++i) {
+           const metricName = doc.qualityMetrics[i].name;
+
+           metricsTemp[metricName] = doc.qualityMetrics[i].score;
+           weightsTemp[metricName] = doc.qualityMetrics[i].weight;
+
+           // Recontruct params dict
+           var opt = {}
+           for (var j = 0; j < doc.qualityMetrics[i].parameters.length; ++j) {
+             var param = doc.qualityMetrics[i].parameters[j];
+             opt[param.name] = param.param;
+           }
+           this.state._metricEngine[metricName].loadOptions(opt);
+         }
+         this._computeGlobalScore(metricsTemp, weightsTemp);
+         this.setState({metrics: metricsTemp, weights: weightsTemp});
+
+         /***** Profiling Tree *****/
+         var res = this._loadProfilingTreeAttributes(doc.profilingTree.attributes);
+         this.setState({collectionsValues: res[0], collectionValuesByKey: res[1]});
+
+         const findOptions = {
+           sort: this.sort,
+           fields: this.project,
+           skip: this.skip,
+           limit: this.limit
+         };
+
+         this.dataService.find(this.namespace, this.filter, findOptions, (errors, docs) => {
+           if (this.sampleCount != null && this.sampleCount > 0) {
+             this._random.seed = this.sampleSeed;
+             this.setState({
+               _docs: this._shuffle(docs).slice(0, this.sampleCount),
+               status: 'enabled',
+               computingMetadata: false
+            });
+           } else {
+             this.setState({
+               _docs: docs,
+               status: 'enabled',
+               computingMetadata: false
+            });
+           }
+         });
+       }
+
+       // TODO: Feedback: collection is empty...
+     });
+   },
+
+   _saveCurrentState() {
+     console.log(this.dataService);
+
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+     this.dataService.client.listCollections(dbName, {}, (err, res) => {
+
+       var findPluginCollection = (onEndJob) => {
+         for (var i = 0; i < res.length; ++i) {
+           if (res[i].name === pluginCollName) {
+             onEndJob();
+             return;
+           }
+         }
+
+         // Create new collection if it does not exists.
+         this.dataService.createCollection(pluginDbNs, {}, () => {
+           onEndJob();
+         });
+       };
+
+       this.serializableData = {
+         lastUpdate: new Date(Date.now()),
+         originalCollectionName: collName,
+         collectionInfo: {
+           query: {
+             // CHECK if you can load this data
+             filter: this.filter,
+             project: this.project,
+             sort: this.sort,
+             skip: this.skip,
+             limit: this.limit
+           },
+           sampleSize: this.sampleCount,
+           sampleSeed: this.sampleSeed
+         },
+         qualityMetrics: [],
+         profilingTree: {
+           attributes: [],
+           functionalDependency: []
+         }
+       };
+
+       this.serializableData.qualityMetrics = this._getQualityMetricsInfo();
+       this.serializableData.profilingTree.attributes = this._getProfilingTreeAttributes(this.state.collectionsValues, this.state.collectionValuesByKey, []);
+
+       this.setState({serializedState: this.serializableData});
+
+       findPluginCollection(() => {
+         this.dataService.client.insertOne(pluginDbNs, this.serializableData, {}, () => {});
+       });
+     });
+   },
+
+   _updateCurrentSaveState() {
+     const dbName = toNS(this.namespace).database;
+     const collName = toNS(this.namespace).collection;
+     const pluginCollName = "_" + collName + "_qualitydata";
+     const pluginDbNs = dbName + "." + pluginCollName;
+     this.dataService.findOneAndReplace(pluginDbNs, {}, this.serializableData, {sort:{lastUpdate: -1}}, () => {});
+   },
+
+   _getQualityMetricsInfo() {
+     return Object.keys(this.state._metricEngine).map((mname, index) => {
+       return ({
+         name: mname,
+         score: this.state.metrics[mname],
+         weight: this.state.weights[mname],
+         algorithm: "", //NOTE: What is this?
+         parameters: Object.keys(this.state._metricEngine[mname].getOptions()).map((key, index) => {
+           return ({
+             name: key,
+             param: this.state._metricEngine[mname].getOptions()[key]
+           });
+         })
+       });
+     });
+   },
+
+   _getProfilingTreeAttributes(dict, freqs, basepath) {
+     const dictkeys = Object.keys(dict);
+     var attrs = [];
+
+     var getFrequencies = (key, data) => {
+       const datakeys = Object.keys(data);
+
+       if (key in data) {
+         return Object.keys(data[key].values).map((curr, index) => {
+           return (
+             {value: curr, count: data[key].values[curr].count, type: data[key].values[curr].type}
+           );
+         });
+       }
+
+       return [];
+     };
+
+     for (var i = 0; i < dictkeys.length; ++i) {
+       const key = dictkeys[i];
+
+       var path = _.clone(basepath);
+       path.push(key);
+
+       //NOTE: parents first
+       attrs.push({
+         attribute: path,
+         inferredDataTypes: dict[key].type,
+         frequencies: getFrequencies(key, freqs),
+         top10valueDistribution: {  //TODO:
+           valueItem: "",
+           valuePercentage: 0.0
+         },
+
+         occurrences: dict[key].count,
+         completeness: dict[key].percentage,
+         numberDistinctValues: null,
+         closedWorldAssumption: dict[key].cwa,
+         pseudoPrimaryKey: dict[key].cpk
+       });
+
+       if ("children" in dict[key]) {
+         attrs = attrs.concat(this._getProfilingTreeAttributes(dict[key].children,
+                                                               key in freqs ? freqs[key].children : {}, path));
+       }
+     }
+
+     return attrs;
+   },
+
+   //TODO: fill collectionValuesByKey (frequencies)
+   _loadProfilingTreeAttributes(attrs) {
+     var getFrequencies = (freqs) => {
+       var result = {};
+
+       for (var i = 0; i < freqs.length; ++i) {
+         result[freqs[i].value] = {count: freqs[i].count, type: freqs[i].type}
+       }
+
+       return result;
+     };
+
+     var lvl = 1;
+     var remainingAttrs = _.clone(attrs);
+
+     var collValuesTemp = {};
+     var freqsTemp = {}
+     while (remainingAttrs.length > 0) {
+       var tmpRemaining = [];
+       for (var i = 0; i < remainingAttrs.length; ++i) {
+         const key = remainingAttrs[i].attribute;
+
+         if (key.length > lvl) {
+           tmpRemaining.push(remainingAttrs[i]);
+         } else {
+           var currSubTree = collValuesTemp;
+           var currFreqSubTree = freqsTemp;
+           for (var j = 0; j < lvl - 1; ++j) {
+             currSubTree = currSubTree[key[j]].children;
+             currFreqSubTree = currFreqSubTree[key[j]].children;
+           }
+
+           currSubTree[key[lvl - 1]] = {
+             "type" : [],
+             "count" : 0,
+             "percentage": 0,
+             "multiple": false,
+             "cwa": false,
+             "cpk": false,
+             "children": {}
+           };
+
+           currFreqSubTree[key[lvl - 1]] = {
+             "values": {},
+             "children": {}
+           };
+
+           currSubTree[key[lvl - 1]].type = remainingAttrs[i].inferredDataTypes;
+           currSubTree[key[lvl - 1]].count = remainingAttrs[i].occurrences;
+           currSubTree[key[lvl - 1]].percentage = remainingAttrs[i].completeness;
+           currSubTree[key[lvl - 1]].multiple = currSubTree[key[lvl - 1]].type.length > 1;
+           currSubTree[key[lvl - 1]].cwa = remainingAttrs[i].closedWorldAssumption;
+           currSubTree[key[lvl - 1]].cpk = remainingAttrs[i].pseudoPrimaryKey;
+
+           currFreqSubTree[key[lvl - 1]].values = getFrequencies(remainingAttrs[i].frequencies);
+         }
+       }
+
+       remainingAttrs = tmpRemaining;
+       lvl += 1;
+     }
+
+     return [collValuesTemp, freqsTemp];
+   },
+
    /*
     * Listeners for events in Compass
     */
    onDatabaseChanged(namespace){
      console.log("Database Changed");
-     this.setState(this.getInitialState());
+     this.namespace = namespace;
+     this.resetCollection();
    },
 
-   //TODO: calculate on query submission or sampling
    onCollectionChanged(namespace) {
      console.log("Collection Changed");
-     this.setState(this.getInitialState());
      this.namespace = namespace;
-     this.dataService.find(namespace, {}, {}, (errors, docs) => {
-
-       console.log("onCollectionChanged");
-       this._updateMetaData(docs, false);
-     });
+     this.setState(this.getInitialState());
    },
 
    _updateMetaData(docs, useMapReduce) {
@@ -1345,7 +1579,7 @@ class CurrentnessMetricEngine extends MetricEngine
        computingMetadata:     true,
        collectionsValues:     [],
        collectionValuesByKey: []
-    });
+     });
 
      this._calculateMetaData(docs, useMapReduce, (data) => {
        this.setState({
@@ -1354,6 +1588,8 @@ class CurrentnessMetricEngine extends MetricEngine
          _docs: docs,
          computingMetadata: false
        });
+
+       this._saveCurrentState();
      });
    },
 
@@ -1381,12 +1617,44 @@ class CurrentnessMetricEngine extends MetricEngine
      }
    },
 
+   /** System indipendent shuffle seeded function (Fisher–Yates shuffle).
+    *  See https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#The_modern_algorithm
+    **/
+   _shuffle(array) {
+     for (var i = array.length - 1; i > 0; i--) {
+       var idx = Math.floor(this._random(0, 1) * (i + 1));
+
+       // swap
+       var tmp    = array[i];
+       array[i]   = array[idx];
+       array[idx] = tmp;
+     }
+
+     return array;
+   },
+
+   /** Simple (bad) system indipendent seeded pseudorandom number generator
+    *  See http://www.ict.griffith.edu.au/anthony/info/C/RandomNumbers
+    **/
+   _random(min, max) {
+     if(typeof this._random.seed == 'undefined') {
+       this._random.seed = 0;
+     }
+
+     max = max || 1;
+     min = min || 0;
+
+     this._random.seed = (this._random.seed * 9301 + 49297) % 233280;
+     var rnd = this._random.seed / 233280;
+
+     return min + rnd * (max - min);
+   },
+
    /**
     * log changes to the store as debug messages.
     * @param  {Object} prevState   previous state.
     */
    storeDidUpdate(prevState) {
-     console.log("Store Updated");
      debug('Quality store changed from', prevState, 'to', this.state);
    }
 });

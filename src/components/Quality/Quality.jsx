@@ -422,6 +422,7 @@ class ConsistencyMetricTab extends MetricTab {
   onModeChange(manual) {
     var opt = this.state.options;
 
+    opt.tables = [];
     opt.manualMode = manual;
     this.setState({
       options: opt
@@ -437,37 +438,34 @@ class ConsistencyMetricTab extends MetricTab {
     });
   }
 
-  renderHeader() {
-    return (
-      <form>
-        <fieldset>
-          <input type="radio"
-            name="mode"
-            value="manual"
-            onClick={() => { this.onModeChange(true) }}
-            checked={ this.state.options.manualMode }/> Manual
-          <input type="radio"
-            name="mode"
-            value="collection"
-            onClick={() => { this.onModeChange(false) }}
-            checked={ !this.state.options.manualMode }/> From collection
-        </fieldset>
-      </form>
-    );
-  }
-
   renderContent() {
-    if (this.state.options.manualMode) {
-      return this._renderManualModeContent();
-    }
-
-    return this._renderFromCollectionModeContent();
-  }
-
-  _renderManualModeContent() {
     return (
       <div>
         <span>Truth tables:</span>
+
+        <form>
+          <fieldset>
+            <input type="radio"
+              name="mode"
+              value="manual"
+              onClick={() => { this.onModeChange(true) }}
+              checked={ this.state.options.manualMode }/> Manual
+            <input type="radio"
+              name="mode"
+              value="collection"
+              onClick={() => { this.onModeChange(false) }}
+              checked={ !this.state.options.manualMode }/> From collection
+          </fieldset>
+        </form>
+
+        <div>
+          {
+            !this.state.options.manualMode ?
+              this._renderFromCollectionModeContent()
+            : ""
+          }
+        </div>
+
         <ol>
           {
             this.state.options.tables.map((curr, index) => {
@@ -476,6 +474,7 @@ class ConsistencyMetricTab extends MetricTab {
                   <span>Key</span>
                   <select value={curr["path"]}
                           className={classnames(styles.select)}
+                          disabled={!this.state.options.manualMode}
                           onChange={(evt) => { this.updateTable.bind(this, 0, index)(evt) }}>
                     {
                       this.keys.map((curr, index) => {
@@ -489,16 +488,26 @@ class ConsistencyMetricTab extends MetricTab {
                   <div>
                     <textarea rows="4" cols="50"
                               value={curr["content"]}
+                              readOnly={!this.state.options.manualMode}
                               onChange={(evt) => { this.updateTable.bind(this, 1, index)(evt) }}/>
                   </div>
 
-                  <input type="button" onClick={this.removeTable.bind(this, index)} value="Remove"/>
+                  {
+                    this.state.options.manualMode ?
+                      <input type="button" onClick={this.removeTable.bind(this, index)} value="Remove"/>
+                    : ""
+                  }
                 </li>
               );
             })
           }
         </ol>
-        <input type="button" onClick={this.addTable.bind(this)} value="Add table"/>
+
+        {
+          this.state.options.manualMode ?
+            <input type="button" onClick={this.addTable.bind(this)} value="Add table"/>
+          : ""
+        }
 
         <hr/>
 
@@ -583,8 +592,12 @@ class ConsistencyMetricTab extends MetricTab {
     return (
       <div>
         <div>
-          Load truth tables and business rules from an other collection.
-          [TODO]
+          Load truth tables from an other collection.
+          Table must have a single document with the following schema:
+
+          <p>key: [value1, value2, value3]</p>
+
+          If key have dots like "attr1.attr2" then key reference the attribute "attr2" inside "attr1".
         </div>
 
         <br></br>
@@ -704,6 +717,10 @@ class Quality extends Component {
     this.props.actions.resetCollection();
   }
 
+  loadLastSave() {
+    this.props.actions.loadLastSave();
+  }
+
   /**
    * Render Quality component.
    *
@@ -733,6 +750,7 @@ class Quality extends Component {
           </div>
 
           <PluginTabBar
+            active={this.props.status == 'enabled' && !this.props.computingMetadata}
             store={this.props}
             metrics={this._makeMetricComponents(this.props.metrics)}>
           </PluginTabBar>
