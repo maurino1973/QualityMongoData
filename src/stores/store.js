@@ -724,7 +724,7 @@ class ConsistencyMetricEngine extends MetricEngine
        weights: {},
        freqs: [],
        _docs: [],
-       serializedState: ""
+       serializedState: {}
      };
 
 
@@ -1201,6 +1201,7 @@ class ConsistencyMetricEngine extends MetricEngine
        if (errors == null && docs.length > 0) {
          const doc = docs[0];
          this.serializableData = doc;
+         this.setState({serializedState: this.serializableData});
 
          //NOTE: No checks for possibly corrupted data...
          /***** Query *****/

@@ -366,6 +366,7 @@ class ImportExportTab extends Tab {
   }
 
   renderContent() {
+    var json = JSON.stringify(this.props.store.serializedState, null, 4);
     return (
       <div>
         Load previous plugin state.
@@ -376,7 +377,7 @@ class ImportExportTab extends Tab {
         Shows current state as json.
         <div>
           <textarea rows="20" cols="70"
-                    value={ JSON.stringify(this.props.store.serializedState, null, 4) }
+                    value={ json }
                     readOnly={true}
           />
         </div>
