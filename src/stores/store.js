@@ -1050,114 +1050,60 @@ class CurrentnessMetricEngine extends MetricEngine
     return [metadata, pkMap];
   },
 
-  _getDocumentFreqsMapReduce(path, callback) {
+  _getDocumentFreqsMapReduce(path, metadata, callback) {
     var dbNs = this.namespace.split('.');
     var collection = this.dataService.client.client.db(dbNs[0].toString(), {}).collection(dbNs[1].toString(), {});
+    var freqs = {};
+    var filt = this.filter;
+    var callb = this._getDocumentFreqsMapReduce;
 
-    var fullpath = path;
-    if (fullpath != "") {
-      fullpath = "." + fullpath;
-    }
 
-    var map =
-      `
-      if (typeof this` + fullpath + ` === "object") {
-        for (var key in this` + fullpath + `) {
-          emit(key, null);
-        }
-      }`;
-    var mapFn = new Function("", map);
+    var promises = Object.keys(metadata).map(function(key) {
+      return new Promise(function(resolve, reject) {
 
-    var reduce = function(k, vals) {
-      return null;
-    }
+        freqs[key] = {
+                "values":{},
+                "children" : {}
+              };
+        var reduce = function(k,vals) { return Array.sum(vals); }
+        var options = {};
+        options.out = {inline:1};
+        options.query = filt;
+        var pathTmp = "";
 
-    var options = {
-      out: {inline: 1},
-      query: this.filter
-    };
-
-    var keyCallback = (err, result) => {
-      var keys = [];
-
-      for (var i=0; i < result.length; ++i) {
-        keys.push(result[i]["_id"]);
-      }
-
-      var x = 0;
-      var freqs = {};
-      var getFreq = (x) => {
-        var key = keys[x];
-
-        var fullpath = path;
-        if (fullpath == "") {
-          fullpath = key;
-        } else {
-          fullpath = path + "." + key;
+        if(path == ""){
+          pathTmp = key;
+        }else{
+          pathTmp = path + "." + key
         }
 
-        var map = "try{this." + fullpath + ";}catch(e){return;} if(this." + fullpath + "!=null){emit(this." + fullpath +", 1);}";
-        var mapFn = new Function("", map);
-
-        var reduce = function(k, vals) {
-          return Array.sum(vals);
-        }
-
-        var options = {
-          out: {inline: 1},
-          query: this.filter
-        };
-
-        var freqCallback = (err, result) => {
-          //BUG: MapReduce return 34 != "34" which is different from what we do
-          //     now, but since getCurrentType() works differently (check comment in the function)
-          //     if documents contains 34 and "34", the string is ignored and is not
-          //     inserted into the frequency table.
-
-          if (result.length != 0) {
-            freqs[key] = {
-              "values": {},  //<val> : {"count": 0, "type": null }
-              "children": {}
-            };
-
-            for (var j = 0; j < result.length; ++j) {
-              var type = this.getCurrentType(result[j]["_id"]);
-              freqs[key]["values"][result[j]["_id"]] = {"count": result[j]["value"], "type": type };
-
-              if (type == "object" && key != "_id") {    // Ignore private fields
-                this._getDocumentFreqsMapReduce(fullpath, (result) => {
-                  freqs[key]["children"] = result;
-                });
+          var map = "if(this."+ pathTmp +"!=null){emit(this." + pathTmp +", 1)};";
+          var mapFn = new Function("", map);
+          collection.mapReduce(
+            mapFn, //map
+            reduce, //reduce
+            options,
+            (err, result)=>{
+                  if(!(metadata[key]["type"].indexOf("object") == -1 || key == "_id")){
+                    callb(pathTmp, metadata[key]["children"], (res) => {
+                      freqs[key]["children"] = res;
+                      resolve();
+                    });
+                  }
+                  else{
+                    for(var c = 0; c<result.length ;c++)
+                      freqs[key]["values"][result[c]["_id"]] = {"count": result[c]["value"], "type": typeof(result[c]["value"])};
+                    resolve();
+                  }
               }
-            }
-          }
+          );
+      });
+    });
 
-          if (x < keys.length) {
-            getFreq(x + 1);
-          } else {
-            callback(freqs);
-          }
-        }
 
-        collection.mapReduce (
-          mapFn, //map
-          reduce, //reduce
-          options, //options
-          freqCallback
-        );
-      }
-
-      if (x < keys.length) {
-        getFreq(x);
-      }
-    }
-
-    collection.mapReduce (
-      map, //map
-      reduce, //reduce
-      options, //options
-      keyCallback
-    );
+    Promise.all(promises)
+    .then(function() { console.log(freqs); callback(freqs);})
+    .catch(console.error);
   },
 
   _getDocumentFreqs(doc, freqs) {
@@ -1248,6 +1194,8 @@ class CurrentnessMetricEngine extends MetricEngine
 
         metadata = this._computeCandidatePk(metadata, pkMap, docs.length);
 
+        var tmpMetaData = metadata;
+
         if(dataReturnedFind.length !== docs.length){ //if they have the same length they are the same subset
 
           //otherwise i want to know which keys aren't in the subset
@@ -1270,9 +1218,8 @@ class CurrentnessMetricEngine extends MetricEngine
                 };
         }
 
-        // TODO: Refactor this
         if (useMapReduce) {
-          this._getDocumentFreqsMapReduce("", (result) => {
+          this._getDocumentFreqsMapReduce("", tmpMetaData, (result) => {
             callback([this._computePercentage(metadata, docs.length), result]);
           });
         } else {
@@ -1582,6 +1529,7 @@ class CurrentnessMetricEngine extends MetricEngine
      });
 
      this._calculateMetaData(docs, useMapReduce, (data) => {
+
        this.setState({
          collectionsValues:     data[0],
          collectionValuesByKey: data[1],
