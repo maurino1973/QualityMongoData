@@ -1056,6 +1056,7 @@ class CurrentnessMetricEngine extends MetricEngine
     var freqs = {};
     var filter = Object.assign({}, this.filter);
     var analyzeObj = this._getDocumentFreqsMapReduce;
+    var getType = this.getCurrentType;
 
     var promises = Object.keys(metadata).map(function(key) {
       return new Promise(function(resolve, reject) {
@@ -1078,7 +1079,9 @@ class CurrentnessMetricEngine extends MetricEngine
 
         var options = {};
         options.out = {inline:1};
-        filt[pathTmp] = {$exists : 1};
+        if(!filt[pathTmp]){
+          filt[pathTmp] = {$exists : 1};
+        }
         options.query = filt;
 
         var map = "if(this."+ pathTmp +" !== null){emit(this." + pathTmp +", 1)};";
@@ -1089,13 +1092,11 @@ class CurrentnessMetricEngine extends MetricEngine
           options,
           (err, result)=>  {
             for(var c = 0; c<result.length ;c++)
-              freqs[key]["values"][result[c]["_id"]] = {"count": result[c]["value"], "type": typeof(result[c]["value"])};
+              freqs[key]["values"][result[c]["_id"]] = {"count": result[c]["value"], "type": getType(result[c]["_id"])};
 
             if(metadata[key]["type"].indexOf("object") == -1 || key == "_id"){
               resolve();
             }else{
-
-//               console.log("obj "+ pathTmp, metadata[key]["children"], result, freqs[key]);
 
               analyzeObj(pathTmp, metadata[key]["children"], (res) => {
                     freqs[key]["children"] = res;
@@ -1109,7 +1110,7 @@ class CurrentnessMetricEngine extends MetricEngine
 
     Promise.all(promises)
     .then(function() {callback(freqs);})
-    .catch(console.error);
+    .catch();
   },
 
   _getDocumentFreqs(doc, freqs) {
