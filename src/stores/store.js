@@ -1054,21 +1054,21 @@ class CurrentnessMetricEngine extends MetricEngine
     var dbNs = this.namespace.split('.');
     var collection = this.dataService.client.client.db(dbNs[0].toString(), {}).collection(dbNs[1].toString(), {});
     var freqs = {};
-    var filt = this.filter;
-    var callb = this._getDocumentFreqsMapReduce;
-
+    var filter = Object.assign({}, this.filter);
+    var analyzeObj = this._getDocumentFreqsMapReduce;
+    var getType = this.getCurrentType;
 
     var promises = Object.keys(metadata).map(function(key) {
       return new Promise(function(resolve, reject) {
+
+        var filt = Object.assign({}, filter);
 
         freqs[key] = {
                 "values":{},
                 "children" : {}
               };
         var reduce = function(k,vals) { return Array.sum(vals); }
-        var options = {};
-        options.out = {inline:1};
-        options.query = filt;
+
         var pathTmp = "";
 
         if(path == ""){
@@ -1077,33 +1077,40 @@ class CurrentnessMetricEngine extends MetricEngine
           pathTmp = path + "." + key
         }
 
-          var map = "if(this."+ pathTmp +"!=null){emit(this." + pathTmp +", 1)};";
-          var mapFn = new Function("", map);
-          collection.mapReduce(
-            mapFn, //map
-            reduce, //reduce
-            options,
-            (err, result)=>{
-                  if(!(metadata[key]["type"].indexOf("object") == -1 || key == "_id")){
-                    callb(pathTmp, metadata[key]["children"], (res) => {
-                      freqs[key]["children"] = res;
-                      resolve();
-                    });
-                  }
-                  else{
-                    for(var c = 0; c<result.length ;c++)
-                      freqs[key]["values"][result[c]["_id"]] = {"count": result[c]["value"], "type": typeof(result[c]["value"])};
+        var options = {};
+        options.out = {inline:1};
+        if(!filt[pathTmp]){
+          filt[pathTmp] = {$exists : 1};
+        }
+        options.query = filt;
+
+        var map = "if(this."+ pathTmp +" !== null){emit(this." + pathTmp +", 1)};";
+        var mapFn = new Function("", map);
+        collection.mapReduce(
+          mapFn, //map
+          reduce, //reduce
+          options,
+          (err, result)=>  {
+            for(var c = 0; c<result.length ;c++)
+              freqs[key]["values"][result[c]["_id"]] = {"count": result[c]["value"], "type": getType(result[c]["_id"])};
+
+            if(metadata[key]["type"].indexOf("object") == -1 || key == "_id"){
+              resolve();
+            }else{
+
+              analyzeObj(pathTmp, metadata[key]["children"], (res) => {
+                    freqs[key]["children"] = res;
                     resolve();
-                  }
-              }
-          );
+                  });
+            }
+          });
+        });
       });
-    });
 
 
     Promise.all(promises)
-    .then(function() { console.log(freqs); callback(freqs);})
-    .catch(console.error);
+    .then(function() {callback(freqs);})
+    .catch();
   },
 
   _getDocumentFreqs(doc, freqs) {
