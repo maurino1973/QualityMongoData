@@ -93,8 +93,6 @@ class AttributeCompletenessMetricTab extends MetricTab {
 
     var each = (100.0 - parsedVal)/c;
 
-//     console.log(notParsedVal, parsedVal, each, c);
-
     for(var i=0; i<this.keys.length; i++){
 
       notParsedVal = parseFloat(document.getElementsByName("attrMetr_"+this.keys[i])[0].value);
@@ -171,40 +169,38 @@ class RegexMetricTab extends MetricTab{
 
   constructor(props) {
     super(props);
-    this.keys = (function(docs, ricFun){
-                    var meta = [];
-                    for(var i = 0; i<docs.length; i++){
-                      for (var key in docs[i]){
-                        if(meta.indexOf(key) === -1){
-                          if(!(docs[i][key] instanceof Array) && typeof docs[i][key] == "object" && key != "_id"){
-                            meta = ricFun(meta, docs[i][key], key, ricFun);
-                            meta.push(key);
-                          }else{
-                            meta.push(key);
-                          }
-                        }
-                      }
-                    }
-                    return meta;
-                  })(this.props.docs, this.analyzeObject);
+    var getKeys = function(meta, doc, subkey) {
+      for (var key in doc) {
+        var currKey = key;
+
+        if (subkey != "") {
+          currKey = subkey + "." + key;
+        }
+
+        if (meta.indexOf(currKey) == -1 && key != "_id") {
+          meta.push(currKey);
+        }
+
+        if (typeof doc[key] == "object" && !(doc[key] instanceof Array) && key != "_id") {
+          meta = getKeys(meta, doc[key], currKey);
+        }
+      }
+
+      return meta;
+    }
+
+    this.keys = [];
+    for (var i = 0; i < this.props.docs.length; ++i) {
+      this.keys = getKeys(this.keys, this.props.docs[i], "");
+    }
+
+    this.keys = this.keys.sort();
     var opt = this.state.options;
     opt["path"] = this.keys[0];
     opt["regex"] = "";
     this.setState({options: opt});
     this.changeAttr = this.changeAttr.bind(this);
     this.changeExpr = this.changeExpr.bind(this);
-  }
-
-  analyzeObject(meta, obj, path, ricFun){
-    for(var key in obj){
-      var tmpPath = path + "." + key;
-      if(meta.indexOf(tmpPath) === -1){
-        meta.push(tmpPath);
-        if(!(obj[key] instanceof Array) && typeof obj[key] == "object")
-          meta = ricFun(meta, obj[key], tmpPath, ricFun);
-      }
-    }
-    return meta;
   }
 
   changeAttr(evt) {
@@ -650,7 +646,7 @@ class CurrentnessMetricTab extends MetricTab{
         </p>
         <p>
           <input id="currentness-datetime" type="datetime-local" onChange={this.changeAttr}/>
-          &nbsp;&nbsp;&nbsp;(Be carefull, you are choosing the date with the current timezone offset).
+          &nbsp;&nbsp;&nbsp;(Be careful, you are choosing the date with the current timezone offset).
         </p>
         <p>
           The score would be high if the average date of insertion of documents is close to today's date.
@@ -662,6 +658,163 @@ class CurrentnessMetricTab extends MetricTab{
     );
   }
 
+}
+
+class NullnessMetricTab extends MetricTab {
+  static displayName = 'NullnessMetricTab';
+
+  constructor(props) {
+    super(props);
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          The nullness metric scores the existence of "null" values in the current collection.
+        </p>
+        <p>
+          The score would be low if the values of the keys are often null.
+          </p>
+        <p>
+          On opposite it would be high if the values of the keys are rarely null.
+        </p>
+      </div>
+    );
+  }
+}
+
+class AttributeCoherenceMetricTab extends MetricTab {
+  static displayName = 'AttributeCoherenceMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    var getKeys = function(meta, doc, subkey) {
+      for (var key in doc) {
+        var currKey = key;
+
+        if (subkey != "") {
+          currKey = subkey + "." + key;
+        }
+
+        if (meta.indexOf(currKey) == -1 && key != "_id") {
+          meta.push(currKey);
+        }
+
+        if (typeof doc[key] == "object" && !(doc[key] instanceof Array) && key != "_id") {
+          meta = getKeys(meta, doc[key], currKey);
+        }
+      }
+
+      return meta;
+    }
+
+    this.keys = [];
+    for (var i = 0; i < this.props.docs.length; ++i) {
+      this.keys = getKeys(this.keys, this.props.docs[i], "");
+    }
+
+    this.keys = this.keys.sort();
+    var opt = this.state.options;
+    opt["freqs"] = this.props.freqs;
+    opt["attr"] = this.keys[0];
+    this.setState({options: opt});
+    this.changeAttr = this.changeAttr.bind(this);
+  }
+
+  changeAttr(evt) {
+    var newAttr = evt.target.options[evt.target.selectedIndex].value;
+    console.log("changed", newAttr);
+    var opt = this.state.options;
+    opt["attr"] = newAttr;
+    this.setState({options: opt});
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          The "Attribute Coherence metric" scores the coherence of the values of a given key in the current collection.
+        </p>
+        <p>
+          Below you could choose the attribute to analyze.
+        </p><p>
+          <select onChange={this.changeAttr}>
+          {
+            this.keys.map((key) => {
+              return (
+                <option value={key.toString()}>{key.toString()}</option>
+                );
+              })
+          }
+          </select>
+        </p>
+        <p>
+          The score would be high if the values assumed by the selected key are almost always the same.
+          </p>
+        <p>
+          On opposite it would be low if the values assumed by the selected key are always different.
+        </p>
+      </div>
+    );
+  }
+}
+
+class CoherenceMetricTab extends MetricTab {
+  static displayName = 'CoherenceMetricTab';
+
+  constructor(props) {
+    super(props);
+
+    var getKeys = function(meta, doc, subkey) {
+      for (var key in doc) {
+        var currKey = key;
+
+        if (subkey != "") {
+          currKey = subkey + "." + key;
+        }
+
+        if (meta.indexOf(currKey) == -1 && key != "_id") {
+          meta.push(currKey);
+        }
+
+        if (typeof doc[key] == "object" && !(doc[key] instanceof Array) && key != "_id") {
+          meta = getKeys(meta, doc[key], currKey);
+        }
+      }
+
+      return meta;
+    }
+
+    this.keys = [];
+    for (var i = 0; i < this.props.docs.length; ++i) {
+      this.keys = getKeys(this.keys, this.props.docs[i], "");
+    }
+
+    this.keys = this.keys.sort();
+
+    var opt = this.state.options;
+    opt["freqs"] = this.props.freqs;
+    opt["keys"] = this.keys;
+    this.setState({options: opt});
+  }
+
+  renderContent() {
+    return (
+      <div>
+        <p>
+          The "Coherence metric" scores the coherence of the values of all the keys in the current collection.
+        </p>
+        <p>
+          The score would be high if the values assumed by the keys (for each pair key-value) are almost always the same.
+          </p>
+        <p>
+          On opposite it would be low if the values assumed by the keys (for each pair key-value) are always different.
+        </p>
+      </div>
+    );
+  }
 }
 
 class Quality extends Component {
@@ -770,7 +923,10 @@ class Quality extends Component {
       "CandidatePkMetric": [CandidatePkMetricTab, "Candidate Primary Key"],
       "RegexMetric": [RegexMetricTab, "Regex Accuracy"],
       "ConsistencyMetric": [ConsistencyMetricTab, "Consistency"],
-      "CurrentnessMetric": [CurrentnessMetricTab, "Currentness"]
+      "CurrentnessMetric": [CurrentnessMetricTab, "Currentness"],
+      "NullnessMetric": [NullnessMetricTab, "Nullness"],
+      "CoherenceMetric": [CoherenceMetricTab, "Coherence"],
+      "AttributeCoherenceMetric": [AttributeCoherenceMetricTab, "Attribute Coherence"]
     };
 
     for (const key in engines) {
@@ -784,6 +940,7 @@ class Quality extends Component {
                         score={engines[key]}
                         options={options}
                         docs={this.props._docs}
+                        freqs = {this.props.collectionValuesByKey}
                         compute={(props, onComputationEnd, onComputationError) =>
                           this.props.actions.computeMetric(key, props, onComputationEnd, onComputationError)
                         }/>

@@ -705,6 +705,220 @@ class CurrentnessMetricEngine extends MetricEngine
   }
 }
 
+class NullnessMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+  }
+
+  compute(docs, props, callback) {
+    if (docs.length == 0) {
+      callback(new MetricEngine.error("Collection is empty"));
+    }
+
+    var occurrences = 0;
+    var tot = 0;
+
+    for (var i in docs) {
+      for (var key in docs[i]) {
+        tot+=1;
+        if(!docs[i][key])
+          occurrences += 1;
+      }
+    }
+
+    if (tot == 0){
+      new MetricEngine.error("No data to analyze")
+    }
+
+    var score = 1.0 - (occurrences/tot);
+
+    callback(score);
+  }
+}
+
+class AttributeCoherenceMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+    this.state.options = {"freqs": {}, "attr": ""};
+  }
+
+  compute(docs, props, callback) {
+    this.state.options = props;
+
+    if (docs.length == 0) {
+      callback(new MetricEngine.error("Collection is empty"));
+    }
+
+    var scores = 0, tot = 0;
+
+    var path = this.state.options["attr"].split('.');
+
+    console.log(path, path.length);
+
+    if(path.length == 1){
+
+      var freqs = this.state.options["freqs"][this.state.options["attr"]]["values"];
+
+      for(var f in freqs){
+        var count = parseInt(freqs[f]["count"]);
+        scores += count*count;
+        tot+=count;
+      }
+
+      var score = scores/(tot*tot);
+
+    }
+    else{
+
+      var ricFreq = this.state.options["freqs"][path[0]]["children"][path[1]];
+      var ret = this.ricCompute(path.slice(1), ricFreq);
+      scores = ret[0];
+      tot = ret[1];
+      score = ret[2];
+
+    }
+
+    if(tot == 0){
+      callback(new MetricEngine.error("No attribute to analyze"));
+      return;
+    }
+
+    callback(score);
+  }
+
+  ricCompute(path, freqs){
+    var res = [0,0,0.0];
+
+    if(path.length == 1){
+
+      var scores = 0, tot = 0;
+
+      freqs = freqs["values"];
+
+      for(var f in freqs){
+        var count = parseInt(freqs[f]["count"]);
+        scores += count*count;
+        tot+=count;
+      }
+
+      var score = scores/(tot*tot);
+
+      console.log("finito ric", [scores, tot, score]);
+
+      return [scores, tot, score];
+
+    }else{
+
+      var ricFreq = freqs["children"][path[1]];
+
+      return this.ricCompute(path.slice(1), ricFreq);
+
+    }
+  }
+
+}
+
+class CoherenceMetricEngine extends MetricEngine
+{
+  constructor(dataService) {
+    super(dataService);
+    this.state.options = {"freqs": {}, "keys" : []};
+  }
+
+  compute(docs, props, callback) {
+
+    this.state.options = props;
+
+    if (docs.length == 0) {
+      callback(new MetricEngine.error("Collection is empty"));
+    }
+
+    var score = 0;
+    var c = 0;
+
+    for(var i = 0; i < this.state.options["keys"].length; i++){
+      score += this.computeCoerence(this.state.options["freqs"], this.state.options["keys"][i]);
+      c+=1;
+    }
+
+    if(c==0){
+      callback(new MetricEngine.error("No data to analyze"));
+      return;
+    }
+
+    score /= c;
+
+    console.log("fin tot", score);
+
+    callback(score);
+  }
+
+  computeCoerence(freqs, key){
+    var scores = 0, tot = 0, score = 0.0;
+
+    var path = key.split('.');
+
+    if(path.length == 1){
+
+      var freqs = freqs[key]["values"];
+
+      for(var f in freqs){
+        var count = parseInt(freqs[f]["count"]);
+        scores += count*count;
+        tot+=count;
+      }
+
+      score = scores/(tot*tot);
+
+    }
+    else{
+
+      var ricFreq = freqs[path[0]]["children"][path[1]];
+      var ret = this.ricCompute(path.slice(1), ricFreq);
+      tot = ret[0];
+      score = ret[1];
+
+    }
+
+    if(tot == 0)
+      return 0.0;
+
+    console.log("fine coerence", key, score);
+
+    return(score);
+  }
+
+  ricCompute(path, freqs){
+    var res = [0,0,0.0];
+
+    if(path.length == 1){
+
+      var scores = 0, tot = 0;
+
+      freqs = freqs["values"];
+
+      for(var f in freqs){
+        var count = parseInt(freqs[f]["count"]);
+        scores += count*count;
+        tot+=count;
+      }
+
+      var score = scores/(tot*tot);
+
+      return [tot, score];
+
+    }else{
+
+      var ricFreq = freqs["children"][path[1]];
+
+      return this.ricCompute(path.slice(1), ricFreq);
+
+    }
+  }
+}
+
 /**
  * Performance Plugin store.
  */
@@ -830,7 +1044,10 @@ class CurrentnessMetricEngine extends MetricEngine
           "CandidatePkMetric": new CandidatePkMetricEngine(this.dataService),
           "RegexMetric": new RegexMetricEngine(this.dataService),
           "ConsistencyMetric": new ConsistencyMetricEngine(this.dataService, this.namespace),
-          "CurrentnessMetric": new CurrentnessMetricEngine(this.dataService)
+          "CurrentnessMetric": new CurrentnessMetricEngine(this.dataService),
+          "NullnessMetric": new NullnessMetricEngine(this.dataService),
+          "AttributeCoherenceMetric": new AttributeCoherenceMetricEngine(this.dataService),
+          "CoherenceMetric": new CoherenceMetricEngine(this.dataService)
         };
 
         var metrics = {};
